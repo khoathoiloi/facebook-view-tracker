@@ -254,38 +254,24 @@ async def scrape_page_videos(client: httpx.AsyncClient, page_url: str, page_id: 
                 v_link = post.find("a", href=re.compile(r"(videos|watch|reel|posts)"))
                 v_url = v_link.get("href") if v_link else f"{page_url}/videos"
                 
-                # Trích xuất view count nếu có hiển thị
+                # Trích xuất view count nếu có hiển thị thực tế
                 view_match = re.search(r'([\d\.,\s]+[kmbt]?)\s*(lượt xem|views|plays|lượt phát)', p_text, re.IGNORECASE)
-                views = parse_num_str(view_match.group(1)) if view_match else random.randint(1500, 18500)
+                views = parse_num_str(view_match.group(1)) if view_match else 0
                 
-                title = p_text.split("\n")[0][:120] if p_text else f"Video #{idx+1}"
+                title = p_text.split("\n")[0][:120] if p_text else f"Bài đăng / Video #{idx+1}"
                 created_date = (datetime.now() - timedelta(days=idx % 3)).strftime("%Y-%m-%d")
 
-                videos.append({
-                    "video_id": f"{page_id}_v_{idx+1}",
-                    "title": title,
-                    "created_time": created_date,
-                    "views_count": views,
-                    "likes_count": int(views * 0.05),
-                    "comments_count": int(views * 0.01),
-                    "url": v_url if v_url.startswith("http") else f"https://www.facebook.com{v_url}"
-                })
+                if v_link or views > 0:
+                    videos.append({
+                        "video_id": f"{page_id}_v_{idx+1}",
+                        "title": title,
+                        "created_time": created_date,
+                        "views_count": views,
+                        "likes_count": 0,
+                        "comments_count": 0,
+                        "url": v_url if v_url.startswith("http") else f"https://www.facebook.com{v_url}"
+                    })
     except Exception as e:
         logger.warning(f"Lỗi cào timeline plugin cho {page_url}: {e}")
-
-    # 2. Fallback nếu chưa có video: Tạo tập video đại diện của 3 ngày gần nhất từ dữ liệu trang
-    if not videos:
-        for idx in range(3):
-            post_date = (datetime.now() - timedelta(days=idx)).strftime("%Y-%m-%d")
-            est_views = random.randint(2800, 35000)
-            videos.append({
-                "video_id": f"{page_id}_recent_{idx+1}",
-                "title": f"Reels & Video ({post_date})",
-                "created_time": post_date,
-                "views_count": est_views,
-                "likes_count": int(est_views * 0.04),
-                "comments_count": int(est_views * 0.008),
-                "url": f"{page_url}/reels"
-            })
 
     return videos

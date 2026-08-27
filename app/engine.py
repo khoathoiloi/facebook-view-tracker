@@ -116,7 +116,7 @@ async def run_sync_all_task(group_id: Optional[int] = None):
 
                     for d_offset in range(3):
                         d_str = (now - timedelta(days=d_offset)).strftime("%Y-%m-%d")
-                        v_count = day_views[d_offset] if total_views_all > 0 else random.randint(1500, 8500)
+                        v_count = day_views[d_offset] if total_views_all > 0 else 0
                         await upsert_daily_analytics(
                             page_id=p["page_id"],
                             date_str=d_str,
