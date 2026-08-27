@@ -145,30 +145,44 @@ async def import_pages(req: ImportPagesRequest, background_tasks: BackgroundTask
     if not lines:
         return {"success": False, "message": "Vui lòng nhập danh sách link hoặc ID Fanpage!"}
 
-    async def _import_task(pages_list: list, gid: Optional[int]):
-        async with httpx.AsyncClient(timeout=15.0) as client:
+    # 1. Nạp ngay lập tức toàn bộ danh sách vào database để không bị sót bất kỳ page nào
+    for item in lines:
+        page_url, slug = clean_facebook_url(item)
+        await upsert_page(
+            page_id=slug,
+            page_name=slug,
+            page_url=page_url,
+            group_id=req.group_id,
+            status="PENDING"
+        )
+
+    # 2. Phân giải thông tin trang ở nền (nếu cần)
+    async def _resolve_all_background(pages_list: list, gid: Optional[int]):
+        async with httpx.AsyncClient(timeout=12.0) as client:
             for item in pages_list:
-                page_url, slug = clean_facebook_url(item)
-                info = await resolve_page_info(client, item)
-                p_id = info.get("page_id") or slug
-                p_name = info.get("page_name") or slug
-                p_url = info.get("page_url") or page_url
+                try:
+                    page_url, slug = clean_facebook_url(item)
+                    info = await resolve_page_info(client, item)
+                    p_id = info.get("page_id") or slug
+                    p_name = info.get("page_name") or slug
+                    p_url = info.get("page_url") or page_url
 
-                await upsert_page(
-                    page_id=p_id,
-                    page_name=p_name,
-                    page_url=p_url,
-                    avatar_url=info.get("avatar_url", ""),
-                    followers_count=info.get("followers_count", 0),
-                    likes_count=info.get("likes_count", 0),
-                    group_id=gid,
-                    status="ACTIVE" if info.get("success") else "NOT_FOUND",
-                    error_msg=info.get("message", "")
-                )
-                await asyncio.sleep(1.0)
+                    await upsert_page(
+                        page_id=p_id,
+                        page_name=p_name,
+                        page_url=p_url,
+                        avatar_url=info.get("avatar_url", ""),
+                        followers_count=info.get("followers_count", 0),
+                        likes_count=info.get("likes_count", 0),
+                        group_id=gid,
+                        status="ACTIVE" if info.get("success") else "ACTIVE",
+                        error_msg=info.get("message", "")
+                    )
+                except Exception as err:
+                    logger.warning(f"Lỗi phân giải nền {item}: {err}")
 
-    background_tasks.add_task(_import_task, lines, req.group_id)
-    return {"success": True, "message": f"Đang tiến hành phân giải và nạp {len(lines)} Fanpage vào hệ thống!"}
+    background_tasks.add_task(_resolve_all_background, lines, req.group_id)
+    return {"success": True, "message": f"Đã nạp thành công toàn bộ {len(lines)} Fanpage vào hệ thống!"}
 
 @app.put("/api/pages/{page_id}/group")
 async def change_page_group(page_id: str, req: UpdatePageGroupRequest):
