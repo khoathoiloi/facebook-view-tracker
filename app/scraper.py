@@ -75,31 +75,71 @@ def clean_facebook_url(raw_input: str) -> Tuple[str, str]:
     slug = raw.lstrip("@").strip()
     return f"https://www.facebook.com/{slug}", slug
 
+def format_clean_cookie(raw: str) -> str:
+    """Chuẩn hóa và làm sạch chuỗi cookie (giải mã URL %3A, xóa khoảng trắng thừa, xóa dấu chấm phẩy cuối)."""
+    import urllib.parse
+    unquoted = urllib.parse.unquote(raw.strip())
+    items = []
+    for part in unquoted.split(";"):
+        if "=" in part:
+            k, v = part.strip().split("=", 1)
+            k_clean = k.strip()
+            v_clean = v.strip()
+            if k_clean and v_clean:
+                items.append(f"{k_clean}={v_clean}")
+    return "; ".join(items)
+
 async def verify_cookie(client: httpx.AsyncClient, cookie_str: str) -> Dict[str, Any]:
-    """Kiểm tra Cookie có còn LIVE hay không và lấy User ID."""
-    url = "https://mbasic.facebook.com/me"
-    headers = get_headers(cookie_str)
+    """Kiểm tra Cookie có còn LIVE hay không bằng request HEAD tới /me."""
+    clean_cookie = format_clean_cookie(cookie_str)
+    if not clean_cookie:
+        return {"status": "DIE", "user_id": "", "error_msg": "Chuỗi cookie trống hoặc không hợp lệ"}
+
+    headers = {
+        "User-Agent": "curl/8.21.0",
+        "Accept": "*/*",
+        "Cookie": clean_cookie
+    }
+
     try:
-        res = await client.get(url, headers=headers, follow_redirects=True, timeout=12.0)
-        html = res.text
+        res = await client.head("https://www.facebook.com/me", headers=headers, follow_redirects=False, timeout=12.0)
+        loc = res.headers.get("location", "")
 
-        # Nếu bị redirect sang trang login
-        if "login" in str(res.url) or "checkpoint" in str(res.url) or "Đăng nhập" in html:
-            return {
-                "status": "DIE",
-                "user_id": "",
-                "error_msg": "Cookie đã hết hạn hoặc bị checkpoint đăng nhập"
-            }
-
-        # Trích xuất user_id từ c_user trong cookie hoặc HTML
-        c_user_match = re.search(r"c_user=(\d+)", cookie_str)
+        # Trích xuất user_id từ c_user hoặc i_user trong cookie
+        c_user_match = re.search(r"c_user=(\d+)", clean_cookie) or re.search(r"i_user=(\d+)", clean_cookie)
         user_id = c_user_match.group(1) if c_user_match else ""
 
-        return {
-            "status": "LIVE",
-            "user_id": user_id,
-            "error_msg": ""
-        }
+        if res.status_code in [301, 302, 303, 307, 308]:
+            if "login" in loc or "checkpoint" in loc:
+                return {
+                    "status": "DIE",
+                    "user_id": user_id,
+                    "error_msg": "Cookie đã bị checkpoint hoặc chuyển hướng đăng nhập"
+                }
+            
+            # Trích xuất profile id/username nếu có từ URL redirect
+            if "id=" in loc:
+                id_m = re.search(r"id=(\d+)", loc)
+                if id_m:
+                    user_id = id_m.group(1)
+
+            return {
+                "status": "LIVE",
+                "user_id": user_id,
+                "error_msg": ""
+            }
+        elif res.status_code == 200:
+            return {
+                "status": "LIVE",
+                "user_id": user_id,
+                "error_msg": ""
+            }
+        else:
+            return {
+                "status": "DIE",
+                "user_id": user_id,
+                "error_msg": f"Facebook phản hồi mã lỗi {res.status_code}"
+            }
     except Exception as e:
         return {
             "status": "ERROR",
