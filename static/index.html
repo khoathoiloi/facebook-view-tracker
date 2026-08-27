@@ -16,10 +16,59 @@
 </head>
 <body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
   
+  <!-- BANNER THÔNG BÁO CẬP NHẬT PHIÊN BẢN MỚI -->
+  <div id="updateBanner" class="hidden bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-8 py-2.5 flex items-center justify-between text-xs font-bold shadow-md">
+    <div class="flex items-center gap-2">
+      <span class="bg-white/20 px-2 py-0.5 rounded text-[10px] uppercase">New Update</span>
+      <span>🚀 Đã có bản cập nhật mới (<span id="txtLatestVersion">v1.0.1</span>)! Tự động cập nhật không cần tải lại file.</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <button onclick="openUpdateModal()" class="underline hover:text-blue-100">Xem tính năng mới</button>
+      <button onclick="applyAutoUpdate()" class="bg-white text-blue-700 hover:bg-blue-50 px-3.5 py-1 rounded-lg shadow-sm transition">
+        ⚡ Cập nhật ngay
+      </button>
+    </div>
+  </div>
+
   <!-- TOAST THÔNG BÁO -->
   <div id="toast" class="fixed bottom-6 right-6 z-50 hidden bg-slate-900 text-white text-xs font-semibold px-5 py-3.5 rounded-xl shadow-2xl flex items-center gap-2.5 transition-all">
     <i class="fa-solid fa-circle-check text-emerald-400 text-sm"></i>
     <span id="toastMsg">Thông báo</span>
+  </div>
+
+  <!-- MODAL XEM THÔNG TIN CẬP NHẬT -->
+  <div id="updateModal" class="fixed inset-0 z-50 hidden bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+      <div class="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+          <i class="fa-solid fa-cloud-arrow-down text-blue-600"></i> Bản Cập Nhật Mới
+        </h3>
+        <button onclick="closeUpdateModal()" class="text-slate-400 hover:text-slate-700 font-bold p-1">✕</button>
+      </div>
+      <div class="p-6 space-y-4">
+        <div class="flex justify-between items-center bg-blue-50 p-3.5 rounded-xl border border-blue-100">
+          <div>
+            <span class="text-xs text-slate-500 block">Phiên bản hiện tại:</span>
+            <span id="modalCurrentVer" class="font-bold text-slate-800 text-sm">v1.0.0</span>
+          </div>
+          <i class="fa-solid fa-arrow-right text-blue-400"></i>
+          <div>
+            <span class="text-xs text-blue-600 block font-semibold">Phiên bản mới:</span>
+            <span id="modalLatestVer" class="font-bold text-blue-700 text-sm">v1.0.1</span>
+          </div>
+        </div>
+        <div>
+          <span class="text-xs font-bold text-slate-700 block mb-1">Nội dung cập nhật (Release Notes):</span>
+          <pre id="modalReleaseNotes" class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-600 max-h-40 overflow-y-auto whitespace-pre-wrap font-sans">Đang tải...</pre>
+        </div>
+      </div>
+      <div class="px-6 py-3.5 border-t border-slate-100 bg-slate-50 flex justify-end gap-2">
+        <button onclick="closeUpdateModal()" class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold px-4 py-2 rounded-xl text-xs">Để sau</button>
+        <button id="btnConfirmUpdate" onclick="applyAutoUpdate()" class="bg-blue-600 hover:bg-blue-700 text-white font-bold px-5 py-2 rounded-xl text-xs shadow-md shadow-blue-500/20">
+          ⚡ Cập nhật & Tự Khởi Động Lại
+        </button>
+      </div>
+    </div>
   </div>
 
   <!-- MODAL XEM CHI TIẾT VIDEO CỦA TRANG -->
@@ -93,7 +142,10 @@
         </div>
         <div>
           <h1 class="text-base font-black text-slate-900 tracking-tight leading-none">ViewTracker</h1>
-          <span class="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">No-Token v2.0</span>
+          <div class="flex items-center gap-1 mt-0.5">
+            <span id="appVersionBadge" class="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded cursor-pointer hover:bg-blue-100" onclick="checkUpdateManual()" title="Bấm để kiểm tra cập nhật">v1.0.0</span>
+            <span id="updateDot" class="hidden w-2 h-2 rounded-full bg-red-500 animate-ping"></span>
+          </div>
         </div>
       </div>
 
@@ -395,6 +447,7 @@
     let cachedGroups = [];
     let pollingInterval = null;
     let chartInstance = null;
+    let updateInfoCache = null;
 
     function showToast(msg) {
       const toast = document.getElementById('toast');
@@ -413,6 +466,69 @@
     async function copyToClipboard(text) {
       await navigator.clipboard.writeText(text);
       showToast(`Đã copy: ${text}`);
+    }
+
+    // ================= TỰ ĐỘNG CẬP NHẬT =================
+    async function checkUpdateOnStartup() {
+      try {
+        const res = await fetch('/api/update/check');
+        const data = await res.json();
+        updateInfoCache = data;
+        
+        document.getElementById('appVersionBadge').textContent = `v${data.current_version}`;
+
+        if (data.has_update) {
+          document.getElementById('updateBanner').classList.remove('hidden');
+          document.getElementById('updateDot').classList.remove('hidden');
+          document.getElementById('txtLatestVersion').textContent = `v${data.latest_version}`;
+        }
+      } catch (e) {}
+    }
+
+    function checkUpdateManual() {
+      if (updateInfoCache && updateInfoCache.has_update) {
+        openUpdateModal();
+      } else {
+        showToast("Bạn đang sử dụng phiên bản mới nhất!");
+      }
+    }
+
+    function openUpdateModal() {
+      if (!updateInfoCache) return;
+      document.getElementById('modalCurrentVer').textContent = `v${updateInfoCache.current_version}`;
+      document.getElementById('modalLatestVer').textContent = `v${updateInfoCache.latest_version}`;
+      document.getElementById('modalReleaseNotes').textContent = updateInfoCache.release_notes || "Bản nâng cấp tính năng mới và cải thiện hiệu năng.";
+      document.getElementById('updateModal').classList.remove('hidden');
+    }
+
+    function closeUpdateModal() {
+      document.getElementById('updateModal').classList.add('hidden');
+    }
+
+    async function applyAutoUpdate() {
+      const btn = document.getElementById('btnConfirmUpdate');
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin me-1.5"></i> Đang tải bản cập nhật...`;
+
+      try {
+        const res = await fetch('/api/update/install', { method: 'POST' });
+        const data = await res.json();
+        showToast(data.message);
+        if (data.success) {
+          btn.innerHTML = `✅ Đã tải xong! Đang khởi động lại...`;
+          setTimeout(() => {
+            window.location.reload();
+          }, 3000);
+        } else {
+          btn.disabled = false;
+          btn.textContent = "Thử lại";
+          alert(data.message);
+        }
+      } catch (e) {
+        showToast("Lỗi khi tải bản cập nhật!");
+        btn.disabled = false;
+        btn.textContent = "Thử lại";
+      }
     }
 
     // ================= QUẢN LÝ NHÓM =================
@@ -872,6 +988,7 @@
     async function initPage() {
       await loadGroups();
       await loadOverview();
+      await checkUpdateOnStartup();
     }
 
     initPage();
