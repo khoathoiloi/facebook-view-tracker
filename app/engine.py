@@ -100,7 +100,7 @@ async def run_sync_all_task(group_id: Optional[int] = None):
                     )
 
                     # 3. Quét danh sách Video & Reels (Tối ưu trong 3 ngày gần nhất)
-                    videos = await scrape_page_videos(client, p["page_url"], p["page_id"], active_cookie)
+                    videos = await scrape_page_videos(client, p["page_url"], p["page_id"], active_cookie, followers_count=followers)
                     if videos:
                         await upsert_videos_batch(p["page_id"], videos)
 
