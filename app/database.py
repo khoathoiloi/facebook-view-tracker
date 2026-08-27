@@ -267,14 +267,15 @@ async def get_page_videos(page_id: str) -> List[Dict[str, Any]]:
         return [dict(r) for r in rows]
 
 # ================= THỐNG KÊ DASHBOARD =================
-async def get_analytics_overview(period: str = "7d", group_id: Optional[int] = None) -> Dict[str, Any]:
-    days_map = {"1d": 0, "7d": 7, "28d": 28, "30d": 30}
-    days = days_map.get(period, 7)
-
-    if days == 0:
+async def get_analytics_overview(period: str = "yesterday", group_id: Optional[int] = None) -> Dict[str, Any]:
+    if period == "yesterday":
+        date_cond = "a.date = date('now', 'localtime', '-1 day')"
+    elif period == "1d" or period == "today":
         date_cond = "a.date = date('now', 'localtime')"
+    elif period == "3d":
+        date_cond = "a.date >= date('now', 'localtime', '-2 days')"
     else:
-        date_cond = f"a.date >= date('now', 'localtime', '-{days} days')"
+        date_cond = "a.date >= date('now', 'localtime', '-6 days')"
 
     group_cond = f"AND p.group_id = {int(group_id)}" if group_id else ""
     page_group_cond = f"WHERE group_id = {int(group_id)}" if group_id else ""

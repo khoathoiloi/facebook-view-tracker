@@ -187,7 +187,7 @@ async def get_videos(page_id: str):
 
 # ================= APIS ANALYTICS & CRAWLER =================
 @app.get("/api/analytics/overview")
-async def get_overview(period: str = "7d", group_id: Optional[int] = None):
+async def get_overview(period: str = "yesterday", group_id: Optional[int] = None):
     return await get_analytics_overview(period, group_id)
 
 @app.post("/api/analytics/sync")

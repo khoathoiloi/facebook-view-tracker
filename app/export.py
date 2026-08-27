@@ -3,7 +3,7 @@ import pandas as pd
 from typing import Optional
 from app.database import get_analytics_overview, get_all_pages, aiosqlite, DB_PATH
 
-async def export_analytics_to_excel(period: str = "7d", group_id: Optional[int] = None) -> io.BytesIO:
+async def export_analytics_to_excel(period: str = "yesterday", group_id: Optional[int] = None) -> io.BytesIO:
     """Xuất toàn bộ báo cáo phân tích ra file Excel gồm nhiều sheet."""
     data = await get_analytics_overview(period, group_id)
     
