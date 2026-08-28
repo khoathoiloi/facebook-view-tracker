@@ -7,7 +7,7 @@ import httpx
 
 logger = logging.getLogger("AutoUpdater")
 
-CURRENT_VERSION = "1.1.4"
+CURRENT_VERSION = "1.1.5"
 GITHUB_REPO = "khoathoiloi/facebook-view-tracker"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 

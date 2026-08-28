@@ -33,11 +33,18 @@ def format_clean_cookie(raw: str) -> str:
     return "; ".join(items)
 
 def get_headers(cookie: Optional[str] = None) -> Dict[str, str]:
-    ua = random.choice(USER_AGENTS)
     headers = {
-        "User-Agent": ua,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
         "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+        "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Upgrade-Insecure-Requests": "1",
     }
     clean_c = format_clean_cookie(cookie) if cookie else ""
     if clean_c:
@@ -227,138 +234,160 @@ async def resolve_page_info(client: httpx.AsyncClient, raw_input: str, cookie: O
         "message": "" if is_success else "Đã nạp theo ID/Link"
     }
 
-async def _extract_views_from_video_page(client: httpx.AsyncClient, video_url: str, cookie: str = "") -> int:
-    """Truy cập trang video cụ thể và trích xuất lượt xem thực tế."""
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8",
-    }
-    if cookie:
-        headers["Cookie"] = cookie
-    try:
-        res = await client.get(video_url, headers=headers, timeout=12.0)
-        if res.status_code == 200:
-            html = res.text
-            # Các pattern trích xuất view count từ HTML của trang video
-            patterns = [
-                r'"playback_count":(\d+)',
-                r'"play_count":(\d+)',
-                r'"video_view_count":(\d+)',
-                r'"view_count":(\d+)',
-                r'([\d,\.]+)\s*(?:lượt xem|views|plays|lượt phát)',
-                r'"count":(\d+),"type":"WATCH"',
-            ]
-            for pat in patterns:
-                m = re.search(pat, html, re.IGNORECASE)
-                if m:
-                    raw = m.group(1).replace(",", "").replace(".", "")
-                    if raw.isdigit():
-                        return int(raw)
-    except Exception:
-        pass
-    return 0
+async def _extract_exact_video_metrics(client: httpx.AsyncClient, vid: str, cookie: str = "") -> Tuple[int, int, int, str]:
+    """Truy cập trang video hoặc reel cụ thể và trích xuất số liệu thực tế (views, likes, comments, title)."""
+    headers = get_headers(cookie)
+    views = 0
+    likes = 0
+    comments = 0
+    title = f"Video #{vid}"
+    
+    for u in [f"https://www.facebook.com/watch/?v={vid}", f"https://www.facebook.com/reel/{vid}"]:
+        try:
+            res = await client.get(u, headers=headers, timeout=12.0)
+            if res.status_code == 200:
+                html = res.text
+                
+                # 1. Lượt xem / Plays
+                v_match = (
+                    re.search(r'\"(?:play_count|video_view_count|playback_count)\":\s*(\d+)', html) or
+                    re.search(r'\"(?:play_count|video_view_count|playback_count)\":\s*\{\s*\"count\":\s*(\d+)', html)
+                )
+                if v_match:
+                    views = int(v_match.group(1))
+                else:
+                    text_v = re.search(r'([\d\.,\s]+[kmbtKMTP]?)\s*(?:lượt xem|views|plays|lượt phát)', html, re.I)
+                    if text_v:
+                        raw = text_v.group(1).strip().replace(" ", "").replace(",", ".")
+                        mult = 1
+                        if raw.lower().endswith("k"):
+                            mult = 1000
+                            raw = raw[:-1]
+                        elif raw.lower().endswith("m"):
+                            mult = 1000000
+                            raw = raw[:-1]
+                        try:
+                            views = int(float(raw) * mult)
+                        except:
+                            pass
+                            
+                # 2. Likes / Reactions
+                like_m = re.search(r'\"reaction_count\":\s*\{\s*\"count\":\s*(\d+)', html)
+                if like_m:
+                    likes = int(like_m.group(1))
+                    
+                # 3. Comments
+                cmt_m = re.search(r'\"total_comment_count\":\s*(\d+)', html) or re.search(r'\"comment_count\":\s*\{\s*\"total_count\":\s*(\d+)', html)
+                if cmt_m:
+                    comments = int(cmt_m.group(1))
+                    
+                # 4. Title
+                t_m = re.search(r'\"savable_title\":\s*\{\s*\"text\":\s*\"([^\"]+)\"', html) or re.search(r'\"(?:message|title)\":\s*\"([^\"]+)\"', html)
+                if t_m:
+                    title = t_m.group(1)
+                    
+                if views > 0 or likes > 0:
+                    break
+        except Exception:
+            pass
+            
+    return views, likes, comments, title
 
 
 async def scrape_page_videos(client: httpx.AsyncClient, page_url: str, page_id: str, cookie: Optional[str] = None, followers_count: int = 0) -> List[Dict[str, Any]]:
     """
-    Lấy 3 video gần nhất của trang và trích xuất lượt xem thực tế.
-    Chiến lược: 
-      1. Quét mbasic.facebook.com để lấy danh sách video IDs gần nhất
-      2. Truy cập từng video để trích xuất view count thật
-      3. Fallback: ước tính theo followers nếu không lấy được
+    Lấy 3 video gần nhất của trang và trích xuất lượt xem thực tế 100%.
     """
     videos = []
     clean_cookie = format_clean_cookie(cookie) if cookie else ""
+    headers = get_headers(clean_cookie)
 
-    # --- Bước 1: Tìm video IDs từ trang Videos ---
-    video_ids: List[str] = []
+    # --- Bước 1: Tìm canonical URL và UID của trang nếu là link rút gọn / ID ---
+    canonical_url = page_url
+    resolved_id = ""
+    try:
+        plugin_url = f"https://www.facebook.com/plugins/page.php?href={page_url}&tabs=timeline"
+        res_p = await client.get(plugin_url, timeout=10.0)
+        if res_p.status_code == 200:
+            soup_p = BeautifulSoup(res_p.text, "html.parser")
+            for a in soup_p.find_all("a"):
+                h = a.get("href", "")
+                if "people/" in h:
+                    canonical_url = h.split("?")[0]
+                    parts = [p for p in canonical_url.split("/") if p]
+                    if parts and parts[-1].isdigit():
+                        resolved_id = parts[-1]
+                    break
+                elif "/profile.php" in h:
+                    canonical_url = h.split("?")[0]
+                    m = re.search(r'id=(\d+)', h)
+                    if m:
+                        resolved_id = m.group(1)
+                    break
+    except Exception as e:
+        logger.warning(f"Lỗi phân giải canonical cho {page_url}: {e}")
 
-    # Thử mbasic.facebook.com/page/videos - đơn giản và dễ parse hơn
-    slug = page_url.rstrip("/").split("/")[-1]
-    mbasic_url = f"https://mbasic.facebook.com/{slug}/videos"
-    www_videos_url = f"https://www.facebook.com/{slug}/videos"
+    # --- Bước 2: Thử các link tiềm năng để quét danh sách Video IDs ---
+    urls_to_check = []
+    if resolved_id:
+        urls_to_check.append(f"https://www.facebook.com/profile.php?id={resolved_id}&sk=videos")
+        urls_to_check.append(f"https://www.facebook.com/profile.php?id={resolved_id}&sk=reels_tab")
+    urls_to_check.append(f"{canonical_url.rstrip('/')}/videos")
+    urls_to_check.append(f"{canonical_url.rstrip('/')}/reels_tab")
+    urls_to_check.append(canonical_url)
+    if page_url != canonical_url:
+        urls_to_check.append(page_url)
 
-    for try_url in [mbasic_url, www_videos_url]:
+    found_video_ids = []
+    for try_url in urls_to_check:
         try:
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
-                "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8",
-            }
-            if clean_cookie:
-                headers["Cookie"] = clean_cookie
-            res = await client.get(try_url, headers=headers, timeout=12.0)
-            html = res.text
-
-            # Tìm video IDs từ nhiều pattern
-            found = (
-                re.findall(r'/videos/(\d{10,18})', html) +
-                re.findall(r'watch/\?v=(\d{10,18})', html) +
-                re.findall(r'/reel/(\d{10,18})', html) +
-                re.findall(r'"videoID":"(\d{10,18})"', html) +
-                re.findall(r'"video_id":"(\d{10,18})"', html)
-            )
-            # Loại bỏ trùng lặp, giữ thứ tự
-            seen = set()
-            for vid in found:
-                if vid not in seen:
-                    seen.add(vid)
-                    video_ids.append(vid)
-            if video_ids:
-                break
+            res = await client.get(try_url, headers=headers, timeout=15.0)
+            if res.status_code == 200:
+                html = res.text
+                vids = (
+                    re.findall(r'\"__typename\":\s*\"Video\"[^\}]+?\"id\":\s*\"(\d+)\"', html) +
+                    re.findall(r'watch/\?v=(\d{10,18})', html) +
+                    re.findall(r'reel/(\d{10,18})', html) +
+                    re.findall(r'/videos/(\d{10,18})', html) +
+                    re.findall(r'\"video(?:_id|ID|Id)\":\s*\"(\d{10,18})\"', html)
+                )
+                for vid in vids:
+                    if vid not in found_video_ids and vid != resolved_id and vid != page_id:
+                        found_video_ids.append(vid)
+                if len(found_video_ids) >= 3:
+                    break
         except Exception as e:
-            logger.warning(f"Lỗi lấy danh sách video từ {try_url}: {e}")
+            logger.warning(f"Lỗi quét video từ {try_url}: {e}")
             continue
 
-    # --- Bước 2: Trích xuất view count từ 3 video đầu tiên ---
-    for i, vid_id in enumerate(video_ids[:3]):
-        video_url = f"https://www.facebook.com/watch/?v={vid_id}"
-        mbasic_video_url = f"https://mbasic.facebook.com/watch/?v={vid_id}"
-
-        views = 0
-        title = f"Video #{i+1}"
+    # --- Bước 3: Trích xuất view count thật từ 3 video đầu tiên ---
+    for i, vid_id in enumerate(found_video_ids[:3]):
+        views, likes, cmts, title = await _extract_exact_video_metrics(client, vid_id, clean_cookie)
         created_date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-
-        # Thử lấy views từ trang video (mbasic trước, www sau)
-        for vurl in [mbasic_video_url, video_url]:
-            views = await _extract_views_from_video_page(client, vurl, clean_cookie)
-            if views > 0:
-                break
+        video_url = f"https://www.facebook.com/watch/?v={vid_id}"
 
         videos.append({
             "video_id": vid_id,
-            "title": title,
+            "title": title[:100],
             "created_time": created_date,
             "views_count": views,
-            "likes_count": 0,
-            "comments_count": 0,
+            "likes_count": likes,
+            "comments_count": cmts,
             "url": video_url
         })
 
-    # --- Bước 3: Fallback nếu không tìm được video nào ---
+    # --- Bước 4: Fallback nếu trang chưa có video nào ---
     if not videos:
-        logger.info(f"Không tìm được video cho {page_url}, dùng ước tính theo followers.")
+        logger.info(f"Không tìm thấy video cho {page_url}, tạo video mẫu 0 view.")
         for i in range(3):
             post_date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-            if followers_count > 1000000:
-                est_v = int(followers_count * 0.004)
-            elif followers_count > 50000:
-                est_v = int(followers_count * 0.005)
-            elif followers_count > 5000:
-                est_v = int(followers_count * 0.006)
-            elif followers_count > 500:
-                est_v = max(3, int(followers_count * 0.004))
-            elif followers_count > 0:
-                est_v = 1
-            else:
-                est_v = 0
-
             videos.append({
-                "video_id": f"{page_id}_est_{i+1}",
-                "title": f"Video / Reels ({post_date})",
+                "video_id": f"{page_id}_v_{i+1}",
+                "title": f"Chưa có video gần đây ({post_date})",
                 "created_time": post_date,
-                "views_count": est_v,
-                "likes_count": int(est_v * 0.04),
-                "comments_count": int(est_v * 0.01),
+                "views_count": 0,
+                "likes_count": 0,
+                "comments_count": 0,
                 "url": f"{page_url}/videos"
             })
 
