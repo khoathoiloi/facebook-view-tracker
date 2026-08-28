@@ -67,22 +67,23 @@ async def check_update_api():
     return await check_for_updates()
 
 @app.post("/api/update/install")
-async def install_update_api(background_tasks: BackgroundTasks):
+async def install_update_api():
     info = await check_for_updates()
     if not info.get("has_update") or not info.get("download_url"):
         return {"success": False, "message": "Không có bản cập nhật mới nào để tải về!"}
 
-    async def _do_update_and_exit(url: str):
-        res = await download_and_apply_update(url)
-        if res.get("success"):
-            await asyncio.sleep(1.0)
-            os._exit(0) # Tắt tiến trình hiện tại để file batch hoán đổi file exe
+    res = await download_and_apply_update(info["download_url"])
+    if res.get("success"):
+        async def _exit_later():
+            await asyncio.sleep(1.5)
+            os._exit(0)
+        asyncio.create_task(_exit_later())
+        return {
+            "success": True,
+            "message": f"Tải bản cập nhật v{info['latest_version']} thành công! Ứng dụng đang khởi động lại..."
+        }
+    return res
 
-    background_tasks.add_task(_do_update_and_exit, info["download_url"])
-    return {
-        "success": True,
-        "message": f"Đang tải bản cập nhật v{info['latest_version']}. Ứng dụng sẽ tự khởi động lại sau giây lát!"
-    }
 
 # ================= APIS QUẢN LÝ NHÓM =================
 @app.get("/api/groups")

@@ -7,7 +7,7 @@ import httpx
 
 logger = logging.getLogger("AutoUpdater")
 
-CURRENT_VERSION = "1.1.6"
+CURRENT_VERSION = "1.1.7"
 GITHUB_REPO = "khoathoiloi/facebook-view-tracker"
 GITHUB_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
@@ -17,7 +17,7 @@ def is_newer_version(latest: str, current: str) -> bool:
         l_parts = [int(p) for p in latest.lstrip("vV").split(".")]
         c_parts = [int(p) for p in current.lstrip("vV").split(".")]
         return l_parts > c_parts
-    except:
+    except Exception:
         return latest.strip() != current.strip()
 
 async def check_for_updates() -> Dict[str, Any]:
@@ -36,7 +36,7 @@ async def check_for_updates() -> Dict[str, Any]:
             
             data = res.json()
             tag_name = data.get("tag_name", "").lstrip("vV")
-            release_notes = data.get("body", "Bản cập nhật tính năng mới và sửa lỗi.")
+            release_notes = data.get("body", "Bản cập nhật tối ưu hiệu năng và sửa lỗi.")
             assets = data.get("assets", [])
 
             download_url = ""
@@ -69,52 +69,69 @@ async def check_for_updates() -> Dict[str, Any]:
         }
 
 async def download_and_apply_update(download_url: str) -> Dict[str, Any]:
-    """Tải file EXE mới từ GitHub và tự động khởi chạy script cập nhật thay thế."""
+    """Tải file EXE mới từ GitHub bằng streaming và tự động kích hoạt bộ cập nhật 1-click."""
     if not download_url:
         return {"success": False, "message": "Không tìm thấy đường link tải bản cập nhật!"}
 
     try:
-        # Đường dẫn file EXE hiện tại
         if getattr(sys, 'frozen', False):
             current_exe = sys.executable
         else:
             current_exe = os.path.abspath(sys.argv[0])
 
         current_dir = os.path.dirname(current_exe)
+        target_name = os.path.basename(current_exe)
         temp_exe_name = "FacebookViewTracker_update.exe"
         temp_exe_path = os.path.join(current_dir, temp_exe_name)
         bat_script_path = os.path.join(current_dir, "update_launcher.bat")
 
-        # Tải file mới
+        # Tải file mới bằng streaming chunk
         headers = {"User-Agent": "FacebookViewTracker-AutoUpdater"}
-        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
-            res = await client.get(download_url, headers=headers)
-            if res.status_code != 200:
-                return {"success": False, "message": f"Tải file thất bại (Mã lỗi HTTP: {res.status_code})"}
+        async with httpx.AsyncClient(timeout=180.0, follow_redirects=True) as client:
+            async with client.stream("GET", download_url, headers=headers) as res:
+                if res.status_code != 200:
+                    return {"success": False, "message": f"Tải file thất bại (HTTP {res.status_code})"}
 
-            with open(temp_exe_path, "wb") as f:
-                f.write(res.content)
+                with open(temp_exe_path, "wb") as f:
+                    async for chunk in res.aiter_bytes(chunk_size=65536):
+                        f.write(chunk)
 
-        # Tạo file batch để hoán đổi file EXE khi tiến trình hiện tại tắt
+        # Tạo file batch hoán đổi file EXE dứt khoát 100%
         bat_content = f"""@echo off
-timeout /t 2 /nobreak > nul
+setlocal
+chcp 65001 > nul
+set "TARGET_EXE={target_name}"
+set "TEMP_EXE={temp_exe_name}"
+
+echo Đang chuẩn bị cập nhật...
+timeout /t 1 /nobreak > nul
+taskkill /F /IM "%TARGET_EXE%" > nul 2>&1
+
 :retry
-move /y "{temp_exe_name}" "{os.path.basename(current_exe)}" > nul 2>&1
-if exist "{temp_exe_name}" (
+move /Y "%TEMP_EXE%" "%TARGET_EXE%" > nul 2>&1
+if exist "%TEMP_EXE%" (
     timeout /t 1 /nobreak > nul
+    taskkill /F /IM "%TARGET_EXE%" > nul 2>&1
     goto retry
 )
-start "" "{os.path.basename(current_exe)}"
-del "%~f0"
+
+echo Khởi động phiên bản mới...
+start "" "%TARGET_EXE%"
+(goto) 2>nul & del "%~f0"
 """
         with open(bat_script_path, "w", encoding="utf-8") as bf:
             bf.write(bat_content)
 
-        # Khởi chạy file batch ngầm
-        subprocess.Popen(["cmd.exe", "/c", bat_script_path], cwd=current_dir, creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+        # Khởi chạy script batch
+        subprocess.Popen(
+            ["cmd.exe", "/c", bat_script_path],
+            cwd=current_dir,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+        )
 
-        return {"success": True, "message": "Tải bản cập nhật thành công! Ứng dụng sẽ tự khởi động lại sau 2 giây..."}
+        return {"success": True, "message": "Tải bản cập nhật thành công! Ứng dụng đang tự khởi động lại..."}
 
     except Exception as e:
         logger.error(f"Lỗi khi thực hiện tự động cập nhật: {e}", exc_info=True)
         return {"success": False, "message": f"Lỗi cập nhật: {str(e)}"}
+

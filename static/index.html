@@ -520,19 +520,33 @@
         showToast(data.message);
         if (data.success) {
           btn.innerHTML = `✅ Đã tải xong! Đang khởi động lại...`;
-          setTimeout(() => {
-            window.location.reload();
-          }, 3000);
+          let attempts = 0;
+          const pollInterval = setInterval(async () => {
+            attempts++;
+            try {
+              const check = await fetch('/api/update/check');
+              if (check.ok) {
+                clearInterval(pollInterval);
+                window.location.reload();
+              }
+            } catch (err) {
+              if (attempts > 20) {
+                clearInterval(pollInterval);
+                window.location.reload();
+              }
+            }
+          }, 1500);
         } else {
           btn.disabled = false;
           btn.textContent = "Thử lại";
           alert(data.message);
         }
       } catch (e) {
-        showToast("Lỗi khi tải bản cập nhật!");
+        showToast("Lỗi khi tải bản cập nhật: " + e.message);
         btn.disabled = false;
         btn.textContent = "Thử lại";
       }
+
     }
 
     // ================= QUẢN LÝ NHÓM =================
