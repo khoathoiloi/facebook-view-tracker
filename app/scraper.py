@@ -227,71 +227,118 @@ async def resolve_page_info(client: httpx.AsyncClient, raw_input: str, cookie: O
         "message": "" if is_success else "Đã nạp theo ID/Link"
     }
 
+async def _extract_views_from_video_page(client: httpx.AsyncClient, video_url: str, cookie: str = "") -> int:
+    """Truy cập trang video cụ thể và trích xuất lượt xem thực tế."""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8",
+    }
+    if cookie:
+        headers["Cookie"] = cookie
+    try:
+        res = await client.get(video_url, headers=headers, timeout=12.0)
+        if res.status_code == 200:
+            html = res.text
+            # Các pattern trích xuất view count từ HTML của trang video
+            patterns = [
+                r'"playback_count":(\d+)',
+                r'"play_count":(\d+)',
+                r'"video_view_count":(\d+)',
+                r'"view_count":(\d+)',
+                r'([\d,\.]+)\s*(?:lượt xem|views|plays|lượt phát)',
+                r'"count":(\d+),"type":"WATCH"',
+            ]
+            for pat in patterns:
+                m = re.search(pat, html, re.IGNORECASE)
+                if m:
+                    raw = m.group(1).replace(",", "").replace(".", "")
+                    if raw.isdigit():
+                        return int(raw)
+    except Exception:
+        pass
+    return 0
+
+
 async def scrape_page_videos(client: httpx.AsyncClient, page_url: str, page_id: str, cookie: Optional[str] = None, followers_count: int = 0) -> List[Dict[str, Any]]:
     """
-    Bóc tách danh sách Video & Reels của trang kèm lượt xem (Views) thực tế trong 3 ngày gần nhất.
+    Lấy 3 video gần nhất của trang và trích xuất lượt xem thực tế.
+    Chiến lược: 
+      1. Quét mbasic.facebook.com để lấy danh sách video IDs gần nhất
+      2. Truy cập từng video để trích xuất view count thật
+      3. Fallback: ước tính theo followers nếu không lấy được
     """
     videos = []
     clean_cookie = format_clean_cookie(cookie) if cookie else ""
-    
-    # 1. Bóc tách video qua Facebook Page Plugin Timeline
-    plugin_url = f"https://www.facebook.com/plugins/page.php?href={page_url}&tabs=timeline&small_header=false&adapt_container_width=true&hide_cover=false&show_facepile=true"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7"
-    }
-    if clean_cookie:
-        headers["Cookie"] = clean_cookie
 
-    try:
-        res = await client.get(plugin_url, headers=headers, timeout=15.0)
-        if res.status_code == 200:
-            soup = BeautifulSoup(res.text, "html.parser")
-            post_items = soup.find_all("div", class_="_1xnd") or soup.find_all("div", class_="userContentWrapper")
-            
-            for idx, post in enumerate(post_items[:10]):
-                p_text = post.text.strip()
-                v_link = post.find("a", href=re.compile(r"(videos|watch|reel|posts)"))
-                v_url = v_link.get("href") if v_link else f"{page_url}/videos"
-                
-                # Trích xuất view count nếu có hiển thị
-                view_match = re.search(r'([\d\.,\s]+[kmbt]?)\s*(lượt xem|views|plays|lượt phát)', p_text, re.IGNORECASE)
-                if view_match:
-                    views = parse_num_str(view_match.group(1))
-                else:
-                    # Tính toán lượt xem theo tỷ lệ follower thực tế của trang
-                    if followers_count > 1000000:
-                        views = int(followers_count * 0.004) # Trang triệu view
-                    elif followers_count > 50000:
-                        views = int(followers_count * 0.005) # Trang lớn
-                    elif followers_count > 5000:
-                        views = int(followers_count * 0.006) # Trang vừa
-                    elif followers_count > 500:
-                        views = max(3, int(followers_count * 0.004)) # Trang nhỏ (vài view: 3-15 view)
-                    elif followers_count > 0:
-                        views = 1
-                    else:
-                        views = 0
-                
-                title = p_text.split("\n")[0][:120] if p_text else f"Video #{idx+1}"
-                created_date = (datetime.now() - timedelta(days=idx % 3)).strftime("%Y-%m-%d")
+    # --- Bước 1: Tìm video IDs từ trang Videos ---
+    video_ids: List[str] = []
 
-                videos.append({
-                    "video_id": f"{page_id}_v_{idx+1}",
-                    "title": title,
-                    "created_time": created_date,
-                    "views_count": views,
-                    "likes_count": int(views * 0.04),
-                    "comments_count": int(views * 0.01),
-                    "url": v_url if v_url.startswith("http") else f"https://www.facebook.com{v_url}"
-                })
-    except Exception as e:
-        logger.warning(f"Lỗi cào timeline plugin cho {page_url}: {e}")
+    # Thử mbasic.facebook.com/page/videos - đơn giản và dễ parse hơn
+    slug = page_url.rstrip("/").split("/")[-1]
+    mbasic_url = f"https://mbasic.facebook.com/{slug}/videos"
+    www_videos_url = f"https://www.facebook.com/{slug}/videos"
 
-    # Nếu timeline không có bài đăng nào thì sinh video đại diện theo đúng tỷ lệ follower của trang
-    if not videos and followers_count > 0:
-        for idx in range(3):
-            post_date = (datetime.now() - timedelta(days=idx)).strftime("%Y-%m-%d")
+    for try_url in [mbasic_url, www_videos_url]:
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
+                "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8",
+            }
+            if clean_cookie:
+                headers["Cookie"] = clean_cookie
+            res = await client.get(try_url, headers=headers, timeout=12.0)
+            html = res.text
+
+            # Tìm video IDs từ nhiều pattern
+            found = (
+                re.findall(r'/videos/(\d{10,18})', html) +
+                re.findall(r'watch/\?v=(\d{10,18})', html) +
+                re.findall(r'/reel/(\d{10,18})', html) +
+                re.findall(r'"videoID":"(\d{10,18})"', html) +
+                re.findall(r'"video_id":"(\d{10,18})"', html)
+            )
+            # Loại bỏ trùng lặp, giữ thứ tự
+            seen = set()
+            for vid in found:
+                if vid not in seen:
+                    seen.add(vid)
+                    video_ids.append(vid)
+            if video_ids:
+                break
+        except Exception as e:
+            logger.warning(f"Lỗi lấy danh sách video từ {try_url}: {e}")
+            continue
+
+    # --- Bước 2: Trích xuất view count từ 3 video đầu tiên ---
+    for i, vid_id in enumerate(video_ids[:3]):
+        video_url = f"https://www.facebook.com/watch/?v={vid_id}"
+        mbasic_video_url = f"https://mbasic.facebook.com/watch/?v={vid_id}"
+
+        views = 0
+        title = f"Video #{i+1}"
+        created_date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+
+        # Thử lấy views từ trang video (mbasic trước, www sau)
+        for vurl in [mbasic_video_url, video_url]:
+            views = await _extract_views_from_video_page(client, vurl, clean_cookie)
+            if views > 0:
+                break
+
+        videos.append({
+            "video_id": vid_id,
+            "title": title,
+            "created_time": created_date,
+            "views_count": views,
+            "likes_count": 0,
+            "comments_count": 0,
+            "url": video_url
+        })
+
+    # --- Bước 3: Fallback nếu không tìm được video nào ---
+    if not videos:
+        logger.info(f"Không tìm được video cho {page_url}, dùng ước tính theo followers.")
+        for i in range(3):
+            post_date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
             if followers_count > 1000000:
                 est_v = int(followers_count * 0.004)
             elif followers_count > 50000:
@@ -299,12 +346,14 @@ async def scrape_page_videos(client: httpx.AsyncClient, page_url: str, page_id: 
             elif followers_count > 5000:
                 est_v = int(followers_count * 0.006)
             elif followers_count > 500:
-                est_v = max(3, int(followers_count * 0.004)) # Vài view
-            else:
+                est_v = max(3, int(followers_count * 0.004))
+            elif followers_count > 0:
                 est_v = 1
+            else:
+                est_v = 0
 
             videos.append({
-                "video_id": f"{page_id}_v_{idx+1}",
+                "video_id": f"{page_id}_est_{i+1}",
                 "title": f"Video / Reels ({post_date})",
                 "created_time": post_date,
                 "views_count": est_v,
@@ -314,3 +363,4 @@ async def scrape_page_videos(client: httpx.AsyncClient, page_url: str, page_id: 
             })
 
     return videos
+
