@@ -1,10 +1,17 @@
 import os
+import sys
 import json
 import aiosqlite
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any
 
-DB_PATH = os.environ.get("DB_PATH", "tracker_data.db")
+def get_base_dir() -> str:
+    if getattr(sys, 'frozen', False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+BASE_DIR = get_base_dir()
+DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "tracker_data.db"))
 
 async def init_db():
     """Khởi tạo toàn bộ bảng trong cơ sở dữ liệu SQLite."""
