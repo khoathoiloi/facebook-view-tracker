@@ -1,0 +1,25 @@
+PAGE FB
+
+1. Mở PageFB.exe.
+2. Chọn tài khoản BlogB trong ô tài khoản. Tài khoản cũ giữ nguyên dữ liệu; bấm "Thêm tài khoản" để tạo catalog và Chrome profile riêng cho tài khoản mới.
+3. Bấm "Mở Chrome / Đăng nhập", đăng nhập đúng tài khoản đang chọn, rồi bấm "Quét toàn bộ Page (Channels)".
+4. Chọn một hoặc nhiều Page rồi dùng các nút để gắn nhãn Page xanh, Page đỏ hoặc khôi phục Page thường.
+5. Muốn bỏ cả một cụm, mở thẻ của cụm đó rồi bấm "Xoá cụm Page ..." và kiểm tra số lượng trước khi xác nhận.
+6. Bấm "Xuất tên Fanpage" rồi chọn nơi lưu. File TXT chỉ có tên Page thường và Page xanh, mỗi Page một dòng; Page đỏ được bỏ qua.
+7. Bấm "Đồng bộ → Sheet" để tạo gói `page-fb-sheet-sync.json` và `page-fb-sheet-sync.tsv` gồm tài khoản, cụm proxy, tên, ID, trạng thái, Link Reel và Reel 1–3 của tất cả tài khoản.
+8. Bấm "Đồng bộ từ Sheet" rồi chọn file TSV/CSV/JSON đã xuất từ Sheet để cập nhật ngược đúng tài khoản; dòng cũ không có cột Account sẽ áp dụng cho tài khoản đang chọn.
+9. Chọn Page trong danh sách rồi bấm "Kiểm tra view Page"; nếu không chọn, tool hỏi xác nhận để kiểm tra toàn bộ Page thường/xanh của tài khoản hiện tại và bỏ qua Page đỏ.
+
+Lưu ý:
+- Page xanh vẫn nằm trong danh sách Page thường/hoạt động; đây là nhãn ưu tiên bổ sung.
+- Page đỏ được tách riêng.
+- Các Page trùng tên được giữ thành từng Page riêng theo Facebook ID khi BlogB cung cấp ID.
+- File xuất tên giữ nguyên các Page trùng tên, không chứa proxy, đường link hoặc Facebook ID và không xuất Page đỏ.
+- Không thể xoá cụm cuối cùng. Không thể xoá trong lúc Chrome đang mở/được kiểm tra hoặc đang quét Page.
+- Cụm đã xoá được lưu trong lịch sử; lần quét sau không tự thêm lại các Page cũ thuộc cụm đó.
+- Báo cáo cụm đã xoá nằm tại %LOCALAPPDATA%\PageFB\cum-page-da-xoa.txt.
+- Dữ liệu được tự động lưu tại %LOCALAPPDATA%\PageFB\state.json.
+- Gói đồng bộ và file Apps Script được lưu tại %LOCALAPPDATA%\PageFB\sheet-sync\; bản mẫu Apps Script cũng có trong thư mục cài tool.
+- Mỗi tài khoản mới dùng một thư mục state và Chrome profile riêng dưới %LOCALAPPDATA%\PageFB\accounts\; tool không lưu mật khẩu.
+- Google Sheet không được phép tự khởi chạy EXE cục bộ từ một nút vì giới hạn bảo mật của trình duyệt. File `PageFB-Sheet-Sync.gs` thêm menu và ô chọn trên Sheet; khi đồng bộ ngược, tải vùng A7:J1000 thành TSV/CSV rồi chọn file đó trong tool.
+- Tool này không có chức năng đăng bài, video, rút gọn link, lên lịch hoặc tắt máy.
