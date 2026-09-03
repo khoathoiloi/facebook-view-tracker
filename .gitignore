@@ -12,6 +12,7 @@ tracker.log
 crash_error.log
 KiemTraLoiDangBai/
 chromedriver.exe
+_engine/
 
 # Temporary / Local state
 .venv/

@@ -19,20 +19,16 @@ Công cụ tự động hóa quản lý, phân loại, kiểm tra view và đồ
 3. **Kiểm tra View Page & Reel:**
    - Tự động kiểm tra lượt xem tối đa 3 Reel gần nhất của từng Page hoặc toàn bộ Page hoạt động.
 
-4. **Đồng bộ hai chiều với Google Sheets:**
-   - **Đồng bộ lên Sheet (`Đồng bộ → Sheet`):** Xuất gói `page-fb-sheet-sync.json` và `page-fb-sheet-sync.tsv` gồm thông tin tài khoản, cụm proxy, tên, ID, trạng thái, Link Reel và số liệu Reel 1–3.
-   - **Đồng bộ ngược (`Đồng bộ từ Sheet`):** Đọc file TSV/CSV/JSON tải từ Google Sheets để cập nhật trạng thái vào hệ thống.
-   - Tích hợp sẵn script Google Apps Script: [`PageFB-Sheet-Sync.gs`](PageFB-Sheet-Sync.gs).
+4. **🔍 Kiểm Tra Lỗi Đăng Bài BlogB (Tích Hợp Trực Tiếp Trên Thanh Công Cụ):**
+   - Nút **`Kiểm tra lỗi đăng bài`** nằm ngay trên thanh công cụ chính của app.
+   - Quét bảng kế hoạch (`plan.blogb.io/app/plan`) theo ngày cố định và chuông thông báo (🔔).
+   - Tự động quét toàn bộ ngày (không giới hạn số trang), có nút **Dừng** linh hoạt.
+   - Bóc tách **Tên Fanpage chuẩn 100%** (khôi phục từ các tên bị cắt ngắn dấu `...`).
+   - Phân loại rõ ràng bài **Đã đăng** và **Thất bại** (kèm dòng lỗi chi tiết).
+   - Nút **"🔴 Chuyển các Page lỗi sang Page Đỏ"**: Tự động chuyển các Fanpage lỗi sang cột Page Đỏ và **làm mới giao diện chính của tool ngay lập tức**.
 
 5. **Xuất danh sách Fanpage:**
    - Xuất file `.txt` chứa tên các Fanpage thường và xanh để phục vụ công việc.
-
-6. **🔍 Quét Tình Trạng & Lỗi Đăng Bài Theo Ngày (BlogB):**
-   - Quét bảng kế hoạch (`plan.blogb.io/app/plan`) và chuông thông báo (🔔) theo 1 ngày cố định.
-   - Bóc tách **Tên Fanpage chuẩn 100%** (tự động khôi phục tên đầy đủ từ các tên bị cắt ngắn `...`).
-   - Phân loại rõ ràng bài **Đã đăng** (Xanh) và **Thất bại** (Đỏ).
-   - Hiển thị chi tiết lỗi chính xác: giới hạn Facebook tạm thời, checkpoint, lỗi proxy, v.v.
-   - Hỗ trợ copy danh sách Page lỗi, tự động gắn nhãn Page Đỏ và xuất báo cáo TXT.
 
 ---
 

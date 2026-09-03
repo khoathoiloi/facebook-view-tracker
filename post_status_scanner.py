@@ -27,10 +27,12 @@ try:
 except ImportError:
     webdriver = None
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
 LOCALAPPDATA = os.environ.get("LOCALAPPDATA", os.path.expanduser(r"~\AppData\Local"))
 STATE_JSON_PATH = os.path.join(LOCALAPPDATA, "PageFB", "state.json")
 CHROMEDRIVER_PATH = os.path.join(BASE_DIR, "chromedriver.exe")
+if not os.path.exists(CHROMEDRIVER_PATH):
+    CHROMEDRIVER_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "chromedriver.exe")
 BROWSER_PROFILE_DIR = os.path.join(LOCALAPPDATA, "PageFB", "ChromeProfile")
 SCANNER_PROFILE_DIR = os.path.join(LOCALAPPDATA, "PageFB", "ScannerProfile")
 
