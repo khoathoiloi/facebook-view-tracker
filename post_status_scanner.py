@@ -10,12 +10,12 @@ import sys
 import re
 import json
 import time
+import shutil
 import threading
 from datetime import datetime, timedelta
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
-# Selenium imports
 try:
     from selenium import webdriver
     from selenium.webdriver.chrome.service import Service
@@ -32,6 +32,7 @@ LOCALAPPDATA = os.environ.get("LOCALAPPDATA", os.path.expanduser(r"~\AppData\Loc
 STATE_JSON_PATH = os.path.join(LOCALAPPDATA, "PageFB", "state.json")
 CHROMEDRIVER_PATH = os.path.join(BASE_DIR, "chromedriver.exe")
 BROWSER_PROFILE_DIR = os.path.join(LOCALAPPDATA, "PageFB", "ChromeProfile")
+SCANNER_PROFILE_DIR = os.path.join(LOCALAPPDATA, "PageFB", "ScannerProfile")
 
 # ================= 1. BỘ PHÂN GIẢI TÊN FANPAGE CHUẨN 100% =================
 class PageCatalogResolver:
@@ -69,16 +70,13 @@ class PageCatalogResolver:
             return ""
         
         cleaned = raw_text.strip()
-        # Loại bỏ các ký tự dấu chấm, dấu ba chấm thừa ở đuôi
         norm = re.sub(r'[\.\s…]+$', '', cleaned).strip().lower()
         if not norm:
             return cleaned
 
-        # 1. Tìm khớp chính xác (không hoa thường)
         if norm in self.name_map:
             return self.name_map[norm]
 
-        # 2. Tìm khớp tiền tố (prefix match)
         candidates = []
         for p in self.catalog_pages:
             c_name = p["name"]
@@ -89,11 +87,9 @@ class PageCatalogResolver:
         if len(candidates) == 1:
             return candidates[0]
         elif len(candidates) > 1:
-            # Chọn ứng viên có độ dài tương tự hoặc tốt nhất
             candidates.sort(key=lambda x: len(x))
             return candidates[0]
 
-        # 3. Tìm theo từng từ (word match)
         words = norm.split()
         if words:
             for p in self.catalog_pages:
@@ -109,6 +105,31 @@ class BlogBPostScanner:
         self.resolver = resolver
         self.driver = None
 
+    def sync_scanner_profile(self):
+        """Sao chép session và cookies từ ChromeProfile sang ScannerProfile để không bao giờ bị khóa profile."""
+        if not os.path.exists(BROWSER_PROFILE_DIR):
+            return SCANNER_PROFILE_DIR
+        try:
+            os.makedirs(os.path.join(SCANNER_PROFILE_DIR, "Default", "Network"), exist_ok=True)
+            
+            src_local_state = os.path.join(BROWSER_PROFILE_DIR, "Local State")
+            dst_local_state = os.path.join(SCANNER_PROFILE_DIR, "Local State")
+            if os.path.exists(src_local_state):
+                shutil.copy2(src_local_state, dst_local_state)
+
+            src_cookies = os.path.join(BROWSER_PROFILE_DIR, "Default", "Network", "Cookies")
+            dst_cookies = os.path.join(SCANNER_PROFILE_DIR, "Default", "Network", "Cookies")
+            if os.path.exists(src_cookies):
+                shutil.copy2(src_cookies, dst_cookies)
+
+            src_prefs = os.path.join(BROWSER_PROFILE_DIR, "Default", "Preferences")
+            dst_prefs = os.path.join(SCANNER_PROFILE_DIR, "Default", "Preferences")
+            if os.path.exists(src_prefs):
+                shutil.copy2(src_prefs, dst_prefs)
+        except Exception as e:
+            print(f"Lưu ý sao chép session: {e}")
+        return SCANNER_PROFILE_DIR
+
     def get_or_start_driver(self):
         if self.driver:
             try:
@@ -117,10 +138,10 @@ class BlogBPostScanner:
             except Exception:
                 self.driver = None
 
+        profile_dir = self.sync_scanner_profile()
+
         options = Options()
-        if os.path.exists(BROWSER_PROFILE_DIR):
-            options.add_argument(f"--user-data-dir={BROWSER_PROFILE_DIR}")
-        
+        options.add_argument(f"--user-data-dir={profile_dir}")
         options.add_argument("--no-first-run")
         options.add_argument("--no-default-browser-check")
         options.add_argument("--disable-notifications")
@@ -142,125 +163,130 @@ class BlogBPostScanner:
 
     def scan_plan_by_date(self, target_date_str: str, progress_callback=None) -> list:
         """
-        Quét bảng kế hoạch / kết quả đăng bài của BlogB theo ngày cụ thể.
+        Quét bảng kế hoạch / kết quả đăng bài của BlogB theo ngày cụ thể (duyệt toàn bộ các trang).
         target_date_str: định dạng YYYY-MM-DD
         """
         driver = self.get_or_start_driver()
-        url = f"https://plan.blogb.io/app/plan?view=table&start_date={target_date_str}&end_date={target_date_str}"
-        
-        if progress_callback:
-            progress_callback(f"Đang mở trang Kế hoạch BlogB ngày {target_date_str}...")
-
-        driver.get(url)
-        time.sleep(3.5)
-
-        # Chờ bảng xuất hiện
-        try:
-            WebDriverWait(driver, 15).until(
-                lambda d: d.find_elements(By.CSS_SELECTOR, "table tbody tr, [role='row'], [data-testid*='row']")
-            )
-        except TimeoutException:
-            pass
-
-        # Cuộn trang để nạp toàn bộ danh sách (nếu có lazy loading)
-        for _ in range(3):
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(0.8)
-
-        # Tìm tất cả các dòng bài đăng
-        rows = driver.find_elements(By.CSS_SELECTOR, "table tbody tr, [role='row']")
-        if progress_callback:
-            progress_callback(f"Tìm thấy {len(rows)} dòng bài đăng. Đang phân tích...")
-
         results = []
-        for idx, row in enumerate(rows):
+        page_num = 1
+        max_pages = 10
+
+        while page_num <= max_pages:
+            url = f"https://plan.blogb.io/app/plan?view=table&start_date={target_date_str}&end_date={target_date_str}&page={page_num}"
+            
+            if progress_callback:
+                progress_callback(f"Đang mở trang {page_num} của ngày {target_date_str}...")
+
+            driver.get(url)
+            time.sleep(3.5)
+
+            current_url = driver.current_url.lower()
+            if "login" in current_url or "auth." in current_url:
+                raise RuntimeError("Chưa đăng nhập BlogB! Vui lòng đăng nhập trên cửa sổ Chrome vừa mở rồi quét lại.")
+
+            # Chờ bảng xuất hiện
             try:
-                row_text = row.text.strip()
-                if not row_text:
+                WebDriverWait(driver, 8).until(
+                    lambda d: d.find_elements(By.CSS_SELECTOR, "table tbody tr")
+                )
+            except TimeoutException:
+                pass
+
+            # Cuộn trang nhẹ để tải hết
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(1.0)
+
+            rows = driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
+            if not rows:
+                if page_num == 1 and progress_callback:
+                    progress_callback(f"Không tìm thấy bài đăng nào vào ngày {target_date_str}.")
+                break
+
+            if progress_callback:
+                progress_callback(f"Trang {page_num}: Đang phân tích {len(rows)} bài đăng...")
+
+            new_in_page = 0
+            for idx, row in enumerate(rows):
+                try:
+                    tds = row.find_elements(By.TAG_NAME, "td")
+                    if not tds or len(tds) < 3:
+                        continue
+
+                    # Cột 1: Tên Fanpage
+                    raw_page_name = tds[0].text.strip()
+                    # Thử lấy thêm tooltip / title nếu có
+                    for el in tds[0].find_elements(By.CSS_SELECTOR, "[title], [aria-label], span, div"):
+                        t_val = el.get_attribute("title") or el.get_attribute("aria-label") or ""
+                        if t_val and len(t_val) > len(raw_page_name):
+                            raw_page_name = t_val
+                            break
+
+                    full_page_name = self.resolver.resolve_name(raw_page_name)
+
+                    # Cột 2: Tiêu đề video / bài viết
+                    title_text = tds[1].text.strip()
+                    t_lines = [tl.strip() for tl in title_text.splitlines() if tl.strip()]
+                    post_title = t_lines[0] if t_lines else "N/A"
+
+                    # Cột 3: Trạng thái & Chi tiết lỗi
+                    col3_text = tds[2].text.strip()
+                    col3_lines = [cl.strip() for cl in col3_text.splitlines() if cl.strip()]
+                    
+                    status = "UNKNOWN"
+                    error_detail = ""
+
+                    col3_low = col3_text.lower()
+                    if "failed" in col3_low or "thất bại" in col3_low:
+                        status = "THẤT BÀI"
+                        # Dòng tiếp theo chính là chi tiết lỗi
+                        if len(col3_lines) > 1:
+                            error_detail = "\n".join(col3_lines[1:])
+                        else:
+                            # Tìm lỗi từ thuộc tính hoặc thẻ con
+                            err_els = tds[2].find_elements(By.CSS_SELECTOR, "[class*='error'], [class*='danger'], [style*='red'], span, p")
+                            for ee in err_els:
+                                etxt = ee.text.strip()
+                                if etxt and etxt.lower() not in ["failed", "thất bại"]:
+                                    error_detail = etxt
+                                    break
+                    elif "published" in col3_low or "đã đăng" in col3_low:
+                        status = "ĐÃ ĐĂNG"
+                    elif "pending" in col3_low or "đang" in col3_low:
+                        status = "CHỜ ĐĂNG"
+
+                    # Cột 8 hoặc 9: Giờ đăng thực tế
+                    post_time = ""
+                    if len(tds) >= 9 and tds[8].text.strip():
+                        post_time = tds[8].text.strip()
+                    elif len(tds) >= 8 and tds[7].text.strip():
+                        post_time = tds[7].text.strip()
+
+                    # Creator
+                    creator = ""
+                    if len(tds) >= 8 and tds[7].text.strip():
+                        creator = tds[7].text.strip()
+
+                    item_data = {
+                        "stt": len(results) + 1,
+                        "raw_page_name": raw_page_name,
+                        "page_name": full_page_name,
+                        "status": status,
+                        "error_detail": error_detail,
+                        "post_time": post_time,
+                        "post_title": post_title,
+                        "creator": creator
+                    }
+                    results.append(item_data)
+                    new_in_page += 1
+
+                except Exception as row_err:
+                    print(f"Lỗi parse dòng {idx}: {row_err}")
                     continue
 
-                # 1. Bóc tách Tên Fanpage
-                raw_page_name = ""
-                # Tìm element chứa tên page: có thể có title hoặc thẻ span/div
-                page_candidates = row.find_elements(By.CSS_SELECTOR, "div, span, a, p")
-                for el in page_candidates:
-                    title_attr = el.get_attribute("title") or el.get_attribute("aria-label") or ""
-                    txt = el.text.strip()
-                    if title_attr and len(title_attr) > 2 and len(title_attr) < 100:
-                        raw_page_name = title_attr
-                        break
-                    if txt and "..." in txt and len(txt) < 50:
-                        raw_page_name = txt
-                        break
-
-                if not raw_page_name:
-                    # Fallback lấy từ dòng đầu tiên của text
-                    lines = [l.strip() for l in row_text.splitlines() if l.strip()]
-                    if lines:
-                        raw_page_name = lines[0]
-
-                # Ánh xạ tên chuẩn 100% từ catalog
-                full_page_name = self.resolver.resolve_name(raw_page_name)
-
-                # 2. Bóc tách Trạng thái (Đã đăng / Thất bại)
-                status = "UNKNOWN"
-                error_detail = ""
-                
-                low_text = row_text.lower()
-                if "thất bại" in low_text or "failed" in low_text:
-                    status = "THẤT BÀI"
-                elif "đã đăng" in low_text or "published" in low_text:
-                    status = "ĐÃ ĐĂNG"
-                elif "đang đăng" in low_text or "chờ" in low_text:
-                    status = "ĐANG XỬ LÝ"
-
-                # 3. Bóc tách Nội dung lỗi cụ thể
-                if status == "THẤT BÀI":
-                    # Tìm dòng thông báo lỗi
-                    for line in row_text.splitlines():
-                        l_strip = line.strip()
-                        l_low = l_strip.lower()
-                        if any(k in l_low for k in ["giới hạn", "facebook", "checkpoint", "xác minh", "lỗi", "error", "failed", "hết hạn", "token", "quản trị"]):
-                            if l_low != "thất bại" and not l_low.startswith("thất bại"):
-                                error_detail = l_strip
-                                break
-                    if not error_detail:
-                        # Thử lấy element màu đỏ / class lỗi
-                        error_els = row.find_elements(By.CSS_SELECTOR, "[class*='error'], [class*='danger'], [style*='red'], span, p")
-                        for err_el in error_els:
-                            e_txt = err_el.text.strip()
-                            if e_txt and "giới hạn" in e_txt.lower():
-                                error_detail = e_txt
-                                break
-
-                # 4. Bóc tách Giờ đăng & Tiêu đề
-                post_time = ""
-                time_match = re.search(r'\b(\d{1,2}:\d{2}(?:\s+\d{2}/\d{2}/\d{4})?)\b', row_text)
-                if time_match:
-                    post_time = time_match.group(1)
-
-                # Tiêu đề bài viết
-                post_title = ""
-                lines = [l.strip() for l in row_text.splitlines() if l.strip()]
-                for l in lines:
-                    if len(l) > 15 and l != error_detail and l != raw_page_name and l != full_page_name:
-                        post_title = l
-                        break
-
-                results.append({
-                    "stt": idx + 1,
-                    "raw_page_name": raw_page_name,
-                    "page_name": full_page_name,
-                    "status": status,
-                    "error_detail": error_detail,
-                    "post_time": post_time,
-                    "post_title": post_title[:120] if post_title else "N/A",
-                    "raw_text": row_text
-                })
-
-            except Exception as row_err:
-                print(f"Lỗi dòng {idx}: {row_err}")
-                continue
+            # Nếu trang này có ít hơn 20 bài thì đã hết các trang
+            if len(rows) < 20 or new_in_page == 0:
+                break
+            page_num += 1
 
         return results
 
@@ -270,7 +296,6 @@ class BlogBPostScanner:
         if progress_callback:
             progress_callback("Đang tìm và mở chuông thông báo 🔔...")
 
-        # Tìm nút chuông
         bell_selectors = [
             "button:has(svg)", "[aria-label*='notification']", "[aria-label*='thông báo']",
             "[data-icon='bell']", ".ant-badge", "[class*='notification']"
@@ -294,7 +319,6 @@ class BlogBPostScanner:
             progress_callback("Đang đọc danh sách thông báo...")
 
         notices = []
-        # Tìm các panel thông báo
         panel_items = driver.find_elements(By.CSS_SELECTOR, "[role='dialog'] li, [role='menu'] div, .ant-popover-inner, [class*='notification-item'], [class*='popover']")
         for item in panel_items:
             try:
@@ -311,8 +335,8 @@ class PostStatusScannerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Page FB — Quét Tình Trạng & Lỗi Đăng Bài BlogB")
-        self.root.geometry("1100x680")
-        self.root.minsize(900, 550)
+        self.root.geometry("1120x700")
+        self.root.minsize(920, 560)
 
         self.resolver = PageCatalogResolver()
         self.scanner = BlogBPostScanner(self.resolver)
@@ -327,7 +351,6 @@ class PostStatusScannerApp:
         
         style.configure("Header.TLabel", font=("Segoe UI", 15, "bold"), foreground="#0f172a")
         style.configure("SubHeader.TLabel", font=("Segoe UI", 9), foreground="#64748b")
-        style.configure("Card.TFrame", background="#ffffff", relief="flat")
         
         style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"), background="#2563eb", foreground="#ffffff")
         style.map("Primary.TButton", background=[("active", "#1d4ed8")])
@@ -346,24 +369,22 @@ class PostStatusScannerApp:
         desc_lbl = ttk.Label(header_frame, text="Tự động bóc tách trạng thái, thời gian và chi tiết lỗi kèm tên Fanpage đầy đủ 100% của ngày đã chọn.", style="SubHeader.TLabel", background="#ffffff")
         desc_lbl.pack(anchor="w", pady=(2, 0))
 
-        # Control & Filter Bar
+        # Control Bar
         ctrl_frame = tk.Frame(self.root, bg="#f8fafc", padx=20, pady=12)
         ctrl_frame.pack(fill="x")
 
-        tk.Label(ctrl_frame, text="Chọn ngày quét:", font=("Segoe UI", 9, "bold"), bg="#f8fafc", fg="#334155").pack(side="left", padx=(0, 6))
+        tk.Label(ctrl_frame, text="Ngày quét (YYYY-MM-DD):", font=("Segoe UI", 9, "bold"), bg="#f8fafc", fg="#334155").pack(side="left", padx=(0, 6))
         
         self.date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
-        self.date_entry = ttk.Entry(ctrl_frame, textvariable=self.date_var, width=12, font=("Segoe UI", 10))
+        self.date_entry = ttk.Entry(ctrl_frame, textvariable=self.date_var, width=13, font=("Segoe UI", 10))
         self.date_entry.pack(side="left", padx=(0, 8))
 
-        # Quick Date buttons
         btn_today = ttk.Button(ctrl_frame, text="Hôm nay", command=self._set_today)
         btn_today.pack(side="left", padx=2)
         
         btn_yesterday = ttk.Button(ctrl_frame, text="Hôm qua", command=self._set_yesterday)
         btn_yesterday.pack(side="left", padx=2)
 
-        # Action Buttons
         self.btn_scan = ttk.Button(ctrl_frame, text="🚀 Bắt đầu quét BlogB", style="Primary.TButton", command=self._start_scan)
         self.btn_scan.pack(side="left", padx=(18, 6))
 
@@ -410,15 +431,13 @@ class PostStatusScannerApp:
         self.tree.column("stt", width=50, anchor="center")
         self.tree.column("page_name", width=220, anchor="w")
         self.tree.column("status", width=110, anchor="center")
-        self.tree.column("error_detail", width=360, anchor="w")
-        self.tree.column("post_time", width=130, anchor="center")
+        self.tree.column("error_detail", width=380, anchor="w")
+        self.tree.column("post_time", width=140, anchor="center")
         self.tree.column("post_title", width=220, anchor="w")
 
-        # Tags for colored rows
         self.tree.tag_configure("failed_row", background="#fef2f2", foreground="#991b1b")
         self.tree.tag_configure("success_row", background="#f0fdf4", foreground="#166534")
 
-        # Scrollbars
         vsb = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
         hsb = ttk.Scrollbar(table_frame, orient="horizontal", command=self.tree.xview)
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
@@ -455,7 +474,6 @@ class PostStatusScannerApp:
 
     def _start_scan(self):
         date_val = self.date_var.get().strip()
-        # Chuẩn hóa ngày nếu người dùng gõ DD/MM/YYYY
         if "/" in date_val:
             parts = date_val.split("/")
             if len(parts) == 3 and len(parts[2]) == 4:
@@ -463,18 +481,27 @@ class PostStatusScannerApp:
                 self.date_var.set(date_val)
 
         self.btn_scan.config(state="disabled")
-        self._update_status("Đang kết nối BlogB...")
+        self._update_status("Đang khởi động Chrome...")
 
         def _worker():
             try:
                 results = self.scanner.scan_plan_by_date(date_val, progress_callback=self._update_status)
                 self.scanned_data = results
                 self.root.after(0, self._render_results)
+                
+                success_count = sum(1 for r in results if r["status"] == "ĐÃ ĐĂNG")
+                failed_count = sum(1 for r in results if r["status"] == "THẤT BÀI")
+                if results:
+                    final_msg = f"Quét thành công! Tổng {len(results)} bài ({success_count} thành công, {failed_count} lỗi)."
+                else:
+                    final_msg = f"Không tìm thấy bài đăng nào trong ngày {date_val}."
+                self.root.after(0, lambda: self._update_status(final_msg))
             except Exception as err:
-                self.root.after(0, lambda: messagebox.showerror("Lỗi quét dữ liệu", str(err)))
+                err_msg = str(err)
+                self.root.after(0, lambda: messagebox.showerror("Lỗi quét dữ liệu", err_msg))
+                self.root.after(0, lambda: self._update_status(f"Lỗi: {err_msg[:60]}"))
             finally:
                 self.root.after(0, lambda: self.btn_scan.config(state="normal"))
-                self.root.after(0, lambda: self._update_status("Quét hoàn tất!"))
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -486,11 +513,12 @@ class PostStatusScannerApp:
             try:
                 notices = self.scanner.scan_notifications(progress_callback=self._update_status)
                 self.root.after(0, lambda: self._show_notifications_dialog(notices))
+                self.root.after(0, lambda: self._update_status(f"Đã đọc {len(notices)} thông báo."))
             except Exception as err:
                 self.root.after(0, lambda: messagebox.showerror("Lỗi quét chuông", str(err)))
+                self.root.after(0, lambda: self._update_status("Lỗi quét chuông."))
             finally:
                 self.root.after(0, lambda: self.btn_bell.config(state="normal"))
-                self.root.after(0, lambda: self._update_status("Sẵn sàng"))
 
         threading.Thread(target=_worker, daemon=True).start()
 
@@ -524,7 +552,6 @@ class PostStatusScannerApp:
         self.lbl_success.config(text=f"🟢 Thành công: {success}")
         self.lbl_failed.config(text=f"🔴 Thất bại: {failed}")
 
-        visible_count = 0
         for r in self.scanned_data:
             if filter_mode == "FAILED" and r["status"] != "THẤT BÀI":
                 continue
@@ -532,22 +559,22 @@ class PostStatusScannerApp:
                 continue
 
             tag = "failed_row" if r["status"] == "THẤT BÀI" else ("success_row" if r["status"] == "ĐÃ ĐĂNG" else "")
+            
+            err_show = r["error_detail"] if r["error_detail"] else ("Thành công" if r["status"] == "ĐÃ ĐĂNG" else "—")
             self.tree.insert("", "end", values=(
                 r["stt"],
                 r["page_name"],
                 r["status"],
-                r["error_detail"] if r["error_detail"] else ("Thành công" if r["status"] == "ĐÃ ĐĂNG" else "—"),
+                err_show,
                 r["post_time"],
                 r["post_title"]
             ), tags=(tag,))
-            visible_count += 1
 
     def _apply_filter(self):
         self._render_results()
 
     def _copy_failed_pages(self):
         failed_pages = [r["page_name"] for r in self.scanned_data if r["status"] == "THẤT BÀI" and r["page_name"]]
-        # Loại bỏ trùng lặp giữ nguyên thứ tự
         unique_failed = list(dict.fromkeys(failed_pages))
         if not unique_failed:
             messagebox.showinfo("Thông báo", "Không có Fanpage nào bị lỗi trong danh sách hiện tại.")
@@ -612,13 +639,13 @@ class PostStatusScannerApp:
             f"Thành công: {sum(1 for r in self.scanned_data if r['status'] == 'ĐÃ ĐĂNG')}",
             f"Thất bại: {sum(1 for r in self.scanned_data if r['status'] == 'THẤT BÀI')}",
             "=" * 90,
-            f"{'STT':<5} | {'TÊN FANPAGE':<30} | {'TRẠNG THÁI':<12} | {'CHI TIẾT LỖI':<35} | {'GIỜ ĐĂNG'}",
+            f"{'STT':<5} | {'TÊN FANPAGE':<30} | {'TRẠNG THÁI':<12} | {'CHI TIẾT LỖI':<40} | {'GIỜ ĐĂNG'}",
             "-" * 90
         ]
 
         for r in self.scanned_data:
             err = r["error_detail"] if r["error_detail"] else ("OK" if r["status"] == "ĐÃ ĐĂNG" else "—")
-            lines.append(f"{r['stt']:<5} | {r['page_name']:<30} | {r['status']:<12} | {err:<35} | {r['post_time']}")
+            lines.append(f"{r['stt']:<5} | {r['page_name']:<30} | {r['status']:<12} | {err:<40} | {r['post_time']}")
 
         try:
             with open(filepath, "w", encoding="utf-8") as f:
