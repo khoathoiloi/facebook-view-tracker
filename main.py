@@ -40,7 +40,7 @@ class EmbeddedPostStatusScannerDialog(tk.Toplevel):
         state_path = current_acc.get("state_path") if current_acc else str(self.main_app.repository.path)
         
         self.resolver = PageCatalogResolver(state_path)
-        self.scanner = BlogBPostScanner(self.resolver)
+        self.scanner = BlogBPostScanner(self.resolver, main_app=self.main_app)
         self.scanned_data = []
         self.stop_event = None
 

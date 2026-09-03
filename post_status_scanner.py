@@ -103,36 +103,24 @@ class PageCatalogResolver:
 
 # ================= 2. BỘ ĐIỀU KHIỂN & CÀO DỮ LIỆU BLOGB =================
 class BlogBPostScanner:
-    def __init__(self, resolver: PageCatalogResolver):
+    def __init__(self, resolver: PageCatalogResolver, main_app=None):
         self.resolver = resolver
+        self.main_app = main_app
         self.driver = None
 
-    def sync_scanner_profile(self):
-        """Sao chép session và cookies từ ChromeProfile sang ScannerProfile để không bao giờ bị khóa profile."""
-        if not os.path.exists(BROWSER_PROFILE_DIR):
-            return SCANNER_PROFILE_DIR
-        try:
-            os.makedirs(os.path.join(SCANNER_PROFILE_DIR, "Default", "Network"), exist_ok=True)
-            
-            src_local_state = os.path.join(BROWSER_PROFILE_DIR, "Local State")
-            dst_local_state = os.path.join(SCANNER_PROFILE_DIR, "Local State")
-            if os.path.exists(src_local_state):
-                shutil.copy2(src_local_state, dst_local_state)
+    def get_or_start_driver(self, progress_callback=None):
+        # 1. Tận dụng trực tiếp trình duyệt Chrome đang mở của PageFB (cùng tài khoản hiện tại)
+        if self.main_app and hasattr(self.main_app, "worker") and self.main_app.worker:
+            auto = getattr(self.main_app.worker, "automation", None)
+            if auto and getattr(auto, "driver", None):
+                try:
+                    _ = auto.driver.window_handles
+                    self.driver = auto.driver
+                    return self.driver
+                except Exception:
+                    auto.driver = None
 
-            src_cookies = os.path.join(BROWSER_PROFILE_DIR, "Default", "Network", "Cookies")
-            dst_cookies = os.path.join(SCANNER_PROFILE_DIR, "Default", "Network", "Cookies")
-            if os.path.exists(src_cookies):
-                shutil.copy2(src_cookies, dst_cookies)
-
-            src_prefs = os.path.join(BROWSER_PROFILE_DIR, "Default", "Preferences")
-            dst_prefs = os.path.join(SCANNER_PROFILE_DIR, "Default", "Preferences")
-            if os.path.exists(src_prefs):
-                shutil.copy2(src_prefs, dst_prefs)
-        except Exception as e:
-            print(f"Lưu ý sao chép session: {e}")
-        return SCANNER_PROFILE_DIR
-
-    def get_or_start_driver(self):
+        # 2. Kiểm tra driver đã mở trước đó của scanner
         if self.driver:
             try:
                 _ = self.driver.window_handles
@@ -140,10 +128,36 @@ class BlogBPostScanner:
             except Exception:
                 self.driver = None
 
-        profile_dir = self.sync_scanner_profile()
+        # 3. Mở Chrome thông qua automation của tài khoản hiện tại trong PageFB
+        if self.main_app and hasattr(self.main_app, "worker") and self.main_app.worker:
+            auto = getattr(self.main_app.worker, "automation", None)
+            if auto:
+                if progress_callback:
+                    progress_callback("Đang mở trình duyệt Chrome cho tài khoản hiện tại...")
+                auto.open_browser()
+                self.driver = auto.driver
+                return self.driver
+
+        # 4. Chế độ chạy độc lập: Tự động lấy đúng thư mục ChromeProfile của tài khoản đang chọn
+        account_profile_dir = Path(LOCALAPPDATA) / "PageFB" / "ChromeProfile"
+        accounts_file = Path(LOCALAPPDATA) / "PageFB" / "accounts.json"
+        if accounts_file.exists():
+            try:
+                with open(accounts_file, "r", encoding="utf-8") as af:
+                    acc_info = json.load(af)
+                curr_id = acc_info.get("current_id")
+                for item in acc_info.get("accounts", []):
+                    if item.get("id") == curr_id:
+                        b_dir = Path(item.get("browser_dir", ""))
+                        if b_dir.exists():
+                            account_profile_dir = b_dir / "ChromeProfile"
+                        break
+            except Exception as e:
+                print(f"Lỗi đọc accounts.json: {e}")
 
         options = Options()
-        options.add_argument(f"--user-data-dir={profile_dir}")
+        if account_profile_dir.exists():
+            options.add_argument(f"--user-data-dir={account_profile_dir}")
         options.add_argument("--no-first-run")
         options.add_argument("--no-default-browser-check")
         options.add_argument("--disable-notifications")
@@ -168,10 +182,42 @@ class BlogBPostScanner:
         Quét bảng kế hoạch / kết quả đăng bài của BlogB theo ngày cụ thể (duyệt toàn bộ các trang đến khi hết).
         target_date_str: định dạng YYYY-MM-DD
         """
-        driver = self.get_or_start_driver()
+        driver = self.get_or_start_driver(progress_callback=progress_callback)
         results = []
         page_num = 1
         seen_signatures = set()
+
+        # Kiểm tra trạng thái đăng nhập ban đầu
+        try:
+            cur_url = driver.current_url.lower()
+            if "login" in cur_url or "auth." in cur_url or "signin" in cur_url or cur_url == "about:blank" or cur_url.startswith("chrome://"):
+                driver.get(f"https://plan.blogb.io/app/plan?view=table&start_date={target_date_str}&end_date={target_date_str}")
+                time.sleep(3.0)
+                cur_url = driver.current_url.lower()
+
+            if "login" in cur_url or "auth." in cur_url or "signin" in cur_url:
+                if progress_callback:
+                    progress_callback("👉 Vui lòng đăng nhập BlogB trên Chrome... (Đang chờ đăng nhập)")
+                
+                logged_in = False
+                for _ in range(90):  # Đợi tối đa 3 phút
+                    if stop_event and stop_event.is_set():
+                        return []
+                    time.sleep(2.0)
+                    try:
+                        u = driver.current_url.lower()
+                        if "plan.blogb.io" in u and "login" not in u and "auth." not in u:
+                            logged_in = True
+                            break
+                    except Exception:
+                        pass
+                
+                if not logged_in:
+                    raise RuntimeError("Hết thời gian chờ đăng nhập BlogB. Hãy đăng nhập tài khoản trên Chrome rồi bấm quét lại.")
+        except Exception as e:
+            if "Hết thời gian" in str(e):
+                raise
+            print(f"Lưu ý kiểm tra login: {e}")
 
         while page_num <= max_pages:
             if stop_event and stop_event.is_set():
