@@ -177,6 +177,24 @@ class BlogBPostScanner:
         except Exception as e:
             raise RuntimeError(f"Không thể khởi động Google Chrome: {e}")
 
+    def close_driver(self):
+        """Đóng hoàn toàn trình duyệt Chrome sau khi quét xong để giải phóng CPU và RAM cho máy."""
+        if self.driver:
+            try:
+                self.driver.quit()
+            except Exception:
+                pass
+            self.driver = None
+
+        if self.main_app and hasattr(self.main_app, "worker") and self.main_app.worker:
+            auto = getattr(self.main_app.worker, "automation", None)
+            if auto and getattr(auto, "driver", None):
+                try:
+                    auto.close()
+                except Exception:
+                    pass
+                auto.driver = None
+
     def scan_plan_by_date(self, target_date_str: str, max_pages: int = 500, progress_callback=None, stop_event=None) -> list:
         """
         Quét bảng kế hoạch / kết quả đăng bài của BlogB theo ngày cụ thể (duyệt toàn bộ các trang đến khi hết).
@@ -341,6 +359,8 @@ class BlogBPostScanner:
                 break
             page_num += 1
 
+        # Tắt Chrome sau khi quét xong để nhẹ máy và giải phóng tài nguyên CPU/RAM
+        self.close_driver()
         return results
 
     def scan_notifications(self, progress_callback=None) -> list:
@@ -381,6 +401,8 @@ class BlogBPostScanner:
             except Exception:
                 continue
 
+        # Tắt Chrome sau khi quét xong chuông
+        self.close_driver()
         return notices
 
 # ================= 3. GIAO DIỆN NGƯỜI DÙNG HIỆN ĐẠI (TKINTER) =================

@@ -228,6 +228,8 @@ class EmbeddedPostStatusScannerDialog(tk.Toplevel):
                 self.after(0, lambda: messagebox.showerror("Lỗi quét dữ liệu", err_msg, parent=self))
                 self.after(0, lambda: self._update_status(f"Lỗi: {err_msg[:60]}"))
             finally:
+                # Tự động tắt Chrome để giải phóng bộ nhớ & nhẹ máy
+                self.scanner.close_driver()
                 self.after(0, lambda: self.btn_scan.config(state="normal"))
                 self.after(0, lambda: self.btn_stop.config(state="disabled"))
 
@@ -247,6 +249,8 @@ class EmbeddedPostStatusScannerDialog(tk.Toplevel):
                 self.after(0, lambda: messagebox.showerror("Lỗi quét chuông", str(err), parent=self))
                 self.after(0, lambda: self._update_status("Lỗi quét chuông."))
             finally:
+                # Tự động tắt Chrome sau khi quét chuông xong
+                self.scanner.close_driver()
                 self.after(0, lambda: self.btn_bell.config(state="normal"))
 
         threading.Thread(target=_worker, daemon=True).start()
