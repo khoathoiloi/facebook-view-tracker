@@ -629,9 +629,82 @@ class EmbeddedPostStatusScannerDialog(tk.Toplevel):
 
 
 # ================= GẮN VÀO GIAO DIỆN CHÍNH PAGE FB =================
+def modern_configure_style(self):
+    style = ttk.Style(self)
+    style.theme_use('clam')
+
+    # Color Palette: Clean Modern SaaS Light
+    BG_APP = '#f1f5f9'        # slate-100
+    BG_CARD = '#ffffff'       # white
+    BORDER_COLOR = '#cbd5e1'  # slate-300
+    TEXT_MAIN = '#0f172a'     # slate-900
+    TEXT_MUTED = '#64748b'    # slate-500
+    ACCENT_BLUE = '#2563eb'   # blue-600
+    ACCENT_PURPLE = '#7c3aed' # purple-600
+
+    style.configure('.', font=('Segoe UI', 9), background=BG_APP, foreground=TEXT_MAIN)
+    style.configure('App.TFrame', background=BG_APP)
+    style.configure('TFrame', background=BG_APP)
+
+    # Labels
+    style.configure('Title.TLabel', font=('Segoe UI', 15, 'bold'), foreground=TEXT_MAIN, background=BG_APP)
+    style.configure('Subtitle.TLabel', font=('Segoe UI', 8), foreground=TEXT_MUTED, background=BG_APP)
+    style.configure('Bold.TLabel', font=('Segoe UI', 9, 'bold'), foreground='#334155', background=BG_APP)
+    style.configure('Summary.TLabel', font=('Segoe UI', 9, 'bold'), foreground='#1e293b', background=BG_APP)
+
+    # Primary Button (Quét Page)
+    style.configure('Primary.TButton', font=('Segoe UI', 9, 'bold'), background=ACCENT_BLUE, foreground='#ffffff', padding=(14, 7), relief='flat', borderwidth=0)
+    style.map('Primary.TButton', background=[('active', '#1d4ed8'), ('disabled', '#94a3b8')], foreground=[('disabled', '#e2e8f0')])
+
+    # Chrome Button (Mở Chrome)
+    style.configure('Chrome.TButton', font=('Segoe UI', 9, 'bold'), background='#334155', foreground='#ffffff', padding=(12, 7), relief='flat', borderwidth=0)
+    style.map('Chrome.TButton', background=[('active', '#1e293b'), ('disabled', '#94a3b8')])
+
+    # Scanner Button (Kiểm tra lỗi đăng bài - Nổi bật)
+    style.configure('Scanner.TButton', font=('Segoe UI', 9, 'bold'), background=ACCENT_PURPLE, foreground='#ffffff', padding=(14, 7), relief='flat', borderwidth=0)
+    style.map('Scanner.TButton', background=[('active', '#6d28d9'), ('disabled', '#c4b5fd')])
+
+    # Standard Action Button
+    style.configure('Action.TButton', font=('Segoe UI', 9), background='#ffffff', foreground='#1e293b', padding=(10, 6), relief='solid', borderwidth=1)
+    style.map('Action.TButton', background=[('active', '#f8fafc'), ('disabled', '#e2e8f0')])
+
+    # Table Actions
+    style.configure('GreenBtn.TButton', font=('Segoe UI', 8, 'bold'), background='#16a34a', foreground='#ffffff', padding=(8, 4), relief='flat', borderwidth=0)
+    style.map('GreenBtn.TButton', background=[('active', '#15803d')])
+
+    style.configure('RedBtn.TButton', font=('Segoe UI', 8, 'bold'), background='#dc2626', foreground='#ffffff', padding=(8, 4), relief='flat', borderwidth=0)
+    style.map('RedBtn.TButton', background=[('active', '#b91c1c')])
+
+    style.configure('RestoreBtn.TButton', font=('Segoe UI', 8, 'bold'), background='#0284c7', foreground='#ffffff', padding=(8, 4), relief='flat', borderwidth=0)
+    style.map('RestoreBtn.TButton', background=[('active', '#0369a1')])
+
+    style.configure('DangerGhost.TButton', font=('Segoe UI', 8), background='#fee2e2', foreground='#991b1b', padding=(8, 4), relief='flat', borderwidth=0)
+    style.map('DangerGhost.TButton', background=[('active', '#fca5a5')])
+
+    # Notebook Tabs
+    style.configure('TNotebook', background=BG_APP, borderwidth=0, tabmargins=[2, 4, 2, 0])
+    style.configure('TNotebook.Tab', font=('Segoe UI', 9, 'bold'), padding=(16, 7), background='#e2e8f0', foreground='#64748b', borderwidth=0)
+    style.map('TNotebook.Tab', background=[('selected', '#ffffff')], foreground=[('selected', ACCENT_BLUE)])
+
+    # Labelframe (Columns for Active / Green / Red)
+    style.configure('TLabelframe', background=BG_CARD, borderwidth=1, relief='solid', bordercolor=BORDER_COLOR)
+    style.configure('TLabelframe.Label', font=('Segoe UI', 9, 'bold'), foreground=TEXT_MAIN, background=BG_CARD)
+
+    # Treeview
+    style.configure('Treeview', font=('Segoe UI', 9), rowheight=28, background=BG_CARD, fieldbackground=BG_CARD, foreground='#1e293b', borderwidth=0)
+    style.configure('Treeview.Heading', font=('Segoe UI', 8, 'bold'), background='#f8fafc', foreground='#475569', relief='flat', padding=6)
+    style.map('Treeview', background=[('selected', '#dbeafe')], foreground=[('selected', '#1e40af')])
+
+    # Combobox & Entry
+    style.configure('TCombobox', font=('Segoe UI', 9), fieldbackground='#ffffff')
+    style.configure('TEntry', font=('Segoe UI', 9), fieldbackground='#ffffff')
+
+page_fb.PageFBApp._configure_style = modern_configure_style
+
 orig_build_ui = page_fb.PageFBApp._build_ui
 
 def custom_build_ui(self):
+    self.configure(bg="#f1f5f9")
     orig_build_ui(self)
 
     # 1. Xóa bỏ các nút Sheet và 'Kiểm tra view Page'
@@ -657,14 +730,63 @@ def custom_build_ui(self):
     if toolbar:
         self.btn_post_error_scan = ttk.Button(
             toolbar,
-            text="Kiểm tra lỗi đăng bài",
-            style="Action.TButton",
+            text="🔍 Kiểm tra lỗi đăng bài",
+            style="Scanner.TButton",
             command=self._open_post_error_scanner
         )
         if copy_btn:
             self.btn_post_error_scan.pack(side="left", padx=(0, 6), after=copy_btn)
         else:
             self.btn_post_error_scan.pack(side="left", padx=(0, 6))
+
+    # 3. Làm đẹp và gắn icon cho toàn bộ các nút & nhãn trên giao diện chính
+    def _beautify(widget):
+        for w in widget.winfo_children():
+            if isinstance(w, ttk.Button):
+                try:
+                    t = w.cget("text")
+                    if "Mở Chrome" in t and "🌐" not in t:
+                        w.configure(text="🌐 Mở Chrome / Đăng nhập", style="Chrome.TButton")
+                    elif "Quét toàn bộ" in t and "⚡" not in t:
+                        w.configure(text="⚡ Quét toàn bộ Page", style="Primary.TButton")
+                    elif "Xuất tên" in t and "📥" not in t:
+                        w.configure(text="📥 Xuất tên Page", style="Action.TButton")
+                    elif "Copy tên Page" in t and "📋" not in t:
+                        w.configure(text="📋 Copy tên Page", style="Action.TButton")
+                    elif "Thêm tài khoản" in t and "+" not in t:
+                        w.configure(text="+ Thêm tài khoản", style="Action.TButton")
+                    elif "Xóa lọc" in t and "✕" not in t:
+                        w.configure(text="✕ Xóa lọc", style="Action.TButton")
+                    elif "Thêm Page xanh" in t and "🟢" not in t:
+                        w.configure(text="🟢 Thêm Page xanh", style="GreenBtn.TButton")
+                    elif "Đưa sang Page đỏ" in t and "🔴" not in t:
+                        w.configure(text="🔴 Đưa sang Page đỏ", style="RedBtn.TButton")
+                    elif "Bỏ Page xanh" in t and "⚪" not in t:
+                        w.configure(text="⚪ Bỏ Page xanh", style="Action.TButton")
+                    elif "Khôi phục Page thường" in t and "🔄" not in t:
+                        w.configure(text="🔄 Khôi phục thường", style="RestoreBtn.TButton")
+                    elif "Khôi phục + Page xanh" in t and "🟢" not in t:
+                        w.configure(text="🟢 Khôi phục + Xanh", style="GreenBtn.TButton")
+                    elif "Xoá cụm" in t and "🗑️" not in t:
+                        w.configure(text="🗑️ " + t, style="DangerGhost.TButton")
+                    elif "Copy cụm" in t and "📋" not in t:
+                        w.configure(text="📋 " + t, style="Action.TButton")
+                    elif "Copy Page đang chọn" in t and "📋" not in t:
+                        w.configure(text="📋 Copy đang chọn", style="Action.TButton")
+                except Exception:
+                    pass
+            elif isinstance(w, ttk.Label):
+                try:
+                    t = w.cget("text")
+                    if "Quản lý Page Facebook" in t and "🚀" not in t:
+                        w.configure(text="🚀 Quản lý Fanpage Facebook", style="Title.TLabel")
+                    elif "Tổng" in t and "Hoạt động" in t:
+                        w.configure(font=("Segoe UI", 10, "bold"), foreground="#1e40af")
+                except Exception:
+                    pass
+            _beautify(w)
+
+    _beautify(self)
 
 def _open_post_error_scanner(self):
     """Mở cửa sổ Kiểm tra lỗi đăng bài BlogB."""
@@ -675,7 +797,28 @@ def _open_post_error_scanner(self):
 
     self._scanner_window = EmbeddedPostStatusScannerDialog(self)
 
+orig_refresh_all = page_fb.PageFBApp._refresh_all
+
+def custom_refresh_all(self):
+    orig_refresh_all(self)
+    # Highlight categories in treeviews
+    for gid, trees in self.group_trees.items():
+        if "green" in trees:
+            trees["green"].tag_configure("green_tag", foreground="#15803d", font=("Segoe UI", 9, "bold"))
+            for item in trees["green"].get_children():
+                trees["green"].item(item, tags=("green_tag",))
+        if "red" in trees:
+            trees["red"].tag_configure("red_tag", foreground="#dc2626", font=("Segoe UI", 9, "bold"))
+            for item in trees["red"].get_children():
+                trees["red"].item(item, tags=("red_tag",))
+        if "active" in trees:
+            trees["active"].tag_configure("alt_row", background="#f8fafc")
+            for idx, item in enumerate(trees["active"].get_children()):
+                if idx % 2 == 1:
+                    trees["active"].item(item, tags=("alt_row",))
+
 page_fb.PageFBApp._build_ui = custom_build_ui
+page_fb.PageFBApp._refresh_all = custom_refresh_all
 page_fb.PageFBApp._open_post_error_scanner = _open_post_error_scanner
 
 
@@ -686,3 +829,4 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
