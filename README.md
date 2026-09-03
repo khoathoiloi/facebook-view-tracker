@@ -27,6 +27,13 @@ Công cụ tự động hóa quản lý, phân loại, kiểm tra view và đồ
 5. **Xuất danh sách Fanpage:**
    - Xuất file `.txt` chứa tên các Fanpage thường và xanh để phục vụ công việc.
 
+6. **🔍 Quét Tình Trạng & Lỗi Đăng Bài Theo Ngày (BlogB):**
+   - Quét bảng kế hoạch (`plan.blogb.io/app/plan`) và chuông thông báo (🔔) theo 1 ngày cố định.
+   - Bóc tách **Tên Fanpage chuẩn 100%** (tự động khôi phục tên đầy đủ từ các tên bị cắt ngắn `...`).
+   - Phân loại rõ ràng bài **Đã đăng** (Xanh) và **Thất bại** (Đỏ).
+   - Hiển thị chi tiết lỗi chính xác: giới hạn Facebook tạm thời, checkpoint, lỗi proxy, v.v.
+   - Hỗ trợ copy danh sách Page lỗi, tự động gắn nhãn Page Đỏ và xuất báo cáo TXT.
+
 ---
 
 ## 📁 Cấu Trúc Thư Mục
@@ -34,9 +41,12 @@ Công cụ tự động hóa quản lý, phân loại, kiểm tra view và đồ
 ```text
 facebook-view-tracker/
 │
-├── page fb.exe             # Ứng dụng chạy trực tiếp (Portable Executable)
-├── HUONG-DAN.txt           # Hướng dẫn sử dụng chi tiết
-├── PageFB-Sheet-Sync.gs    # Script Google Apps Script để gắn vào Google Sheet
+├── page fb.exe                 # Ứng dụng quản lý catalog & đồng bộ Sheet (Portable EXE)
+├── post_status_scanner.py      # Module quét tình trạng & lỗi đăng bài BlogB
+├── Kiem_Tra_Loi_Dang_Bai.bat   # Launcher 1-chạm mở công cụ soát lỗi đăng bài
+├── HUONG-DAN.txt               # Hướng dẫn sử dụng chi tiết
+├── PageFB-Sheet-Sync.gs        # Script Google Apps Script để gắn vào Google Sheet
+├── danh-sach-255-page.txt      # Danh sách 255 link Fanpage
 ├── .gitignore
 └── README.md
 ```

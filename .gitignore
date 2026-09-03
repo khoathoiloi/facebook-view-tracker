@@ -10,6 +10,8 @@ __pycache__/
 Day_Len_GitHub.bat
 tracker.log
 crash_error.log
+KiemTraLoiDangBai/
+chromedriver.exe
 
 # Temporary / Local state
 .venv/
