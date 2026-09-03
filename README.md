@@ -16,18 +16,16 @@ Công cụ tự động hóa quản lý, phân loại, kiểm tra view và đồ
    - Gắn nhãn phân loại: **Page Xanh** (ưu tiên), **Page Đỏ** (ngưng/loại trừ), **Page Thường**.
    - Quản lý theo từng Cụm Proxy, tự động lưu lịch sử cụm đã xóa.
 
-3. **Kiểm tra View Page & Reel:**
-   - Tự động kiểm tra lượt xem tối đa 3 Reel gần nhất của từng Page hoặc toàn bộ Page hoạt động.
-
-4. **🔍 Kiểm Tra Lỗi Đăng Bài BlogB (Tích Hợp Trực Tiếp Trên Thanh Công Cụ):**
-   - Nút **`Kiểm tra lỗi đăng bài`** nằm ngay trên thanh công cụ chính của app.
+3. **🔍 Kiểm Tra Lỗi Đăng Bài BlogB (Tích Hợp Trực Tiếp Trên Thanh Công Cụ):**
+   - Nút **`Kiểm tra lỗi đăng bài`** nằm ngay trên thanh công cụ chính của app (cạnh nút `Copy tên Page`).
    - Quét bảng kế hoạch (`plan.blogb.io/app/plan`) theo ngày cố định và chuông thông báo (🔔).
    - Tự động quét toàn bộ ngày (không giới hạn số trang), có nút **Dừng** linh hoạt.
+   - Tự động đóng Chrome sau khi quét xong để giải phóng CPU và RAM cho máy.
    - Bóc tách **Tên Fanpage chuẩn 100%** (khôi phục từ các tên bị cắt ngắn dấu `...`).
    - Phân loại rõ ràng bài **Đã đăng** và **Thất bại** (kèm dòng lỗi chi tiết).
    - Nút **"🔴 Chuyển các Page lỗi sang Page Đỏ"**: Tự động chuyển các Fanpage lỗi sang cột Page Đỏ và **làm mới giao diện chính của tool ngay lập tức**.
 
-5. **Xuất danh sách Fanpage:**
+4. **Xuất danh sách Fanpage:**
    - Xuất file `.txt` chứa tên các Fanpage thường và xanh để phục vụ công việc.
 
 ---
