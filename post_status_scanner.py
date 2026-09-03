@@ -161,24 +161,29 @@ class BlogBPostScanner:
         except Exception as e:
             raise RuntimeError(f"Không thể khởi động Google Chrome: {e}")
 
-    def scan_plan_by_date(self, target_date_str: str, progress_callback=None) -> list:
+    def scan_plan_by_date(self, target_date_str: str, max_pages: int = 500, progress_callback=None, stop_event=None) -> list:
         """
-        Quét bảng kế hoạch / kết quả đăng bài của BlogB theo ngày cụ thể (duyệt toàn bộ các trang).
+        Quét bảng kế hoạch / kết quả đăng bài của BlogB theo ngày cụ thể (duyệt toàn bộ các trang đến khi hết).
         target_date_str: định dạng YYYY-MM-DD
         """
         driver = self.get_or_start_driver()
         results = []
         page_num = 1
-        max_pages = 10
+        seen_signatures = set()
 
         while page_num <= max_pages:
+            if stop_event and stop_event.is_set():
+                if progress_callback:
+                    progress_callback(f"Đã dừng quét tại trang {page_num - 1}.")
+                break
+
             url = f"https://plan.blogb.io/app/plan?view=table&start_date={target_date_str}&end_date={target_date_str}&page={page_num}"
             
             if progress_callback:
-                progress_callback(f"Đang mở trang {page_num} của ngày {target_date_str}...")
+                progress_callback(f"Đang mở trang {page_num} của ngày {target_date_str} (đã quét {len(results)} bài)...")
 
             driver.get(url)
-            time.sleep(3.5)
+            time.sleep(3.2)
 
             current_url = driver.current_url.lower()
             if "login" in current_url or "auth." in current_url:
@@ -194,7 +199,7 @@ class BlogBPostScanner:
 
             # Cuộn trang nhẹ để tải hết
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(1.0)
+            time.sleep(0.8)
 
             rows = driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
             if not rows:
@@ -341,6 +346,7 @@ class PostStatusScannerApp:
         self.resolver = PageCatalogResolver()
         self.scanner = BlogBPostScanner(self.resolver)
         self.scanned_data = []
+        self.stop_event = threading.Event()
 
         self._configure_styles()
         self._build_ui()
@@ -379,24 +385,33 @@ class PostStatusScannerApp:
         self.date_entry = ttk.Entry(ctrl_frame, textvariable=self.date_var, width=13, font=("Segoe UI", 10))
         self.date_entry.pack(side="left", padx=(0, 8))
 
+        # Quick Date buttons
         btn_today = ttk.Button(ctrl_frame, text="Hôm nay", command=self._set_today)
         btn_today.pack(side="left", padx=2)
         
         btn_yesterday = ttk.Button(ctrl_frame, text="Hôm qua", command=self._set_yesterday)
         btn_yesterday.pack(side="left", padx=2)
 
+        tk.Label(ctrl_frame, text="Số trang:", font=("Segoe UI", 9), bg="#f8fafc", fg="#334155").pack(side="left", padx=(12, 4))
+        self.pages_var = tk.StringVar(value="Tất cả (hết ngày)")
+        self.pages_combo = ttk.Combobox(ctrl_frame, textvariable=self.pages_var, values=["Tất cả (hết ngày)", "10 trang", "20 trang", "30 trang", "50 trang"], width=15, state="readonly")
+        self.pages_combo.pack(side="left", padx=(0, 10))
+
         self.btn_scan = ttk.Button(ctrl_frame, text="🚀 Bắt đầu quét BlogB", style="Primary.TButton", command=self._start_scan)
-        self.btn_scan.pack(side="left", padx=(18, 6))
+        self.btn_scan.pack(side="left", padx=(6, 4))
+
+        self.btn_stop = ttk.Button(ctrl_frame, text="⏹ Dừng", command=self._stop_scan, state="disabled")
+        self.btn_stop.pack(side="left", padx=(0, 6))
 
         self.btn_bell = ttk.Button(ctrl_frame, text="🔔 Quét chuông thông báo", command=self._start_bell_scan)
         self.btn_bell.pack(side="left", padx=6)
 
         # Filter Radios
-        tk.Label(ctrl_frame, text="Hiển thị:", font=("Segoe UI", 9, "bold"), bg="#f8fafc", fg="#334155").pack(side="left", padx=(25, 6))
+        tk.Label(ctrl_frame, text="Hiển thị:", font=("Segoe UI", 9, "bold"), bg="#f8fafc", fg="#334155").pack(side="left", padx=(20, 6))
         self.filter_var = tk.StringVar(value="ALL")
         for text, mode in [("Tất cả", "ALL"), ("🔴 Thất bại (Lỗi)", "FAILED"), ("🟢 Đã đăng", "SUCCESS")]:
             rb = ttk.Radiobutton(ctrl_frame, text=text, variable=self.filter_var, value=mode, command=self._apply_filter)
-            rb.pack(side="left", padx=4)
+            rb.pack(side="left", padx=3)
 
         # Summary Metrics Bar
         summary_frame = tk.Frame(self.root, bg="#ffffff", padx=20, pady=8, bd=1, relief="groove")
@@ -472,6 +487,11 @@ class PostStatusScannerApp:
         self.lbl_status_msg.config(text=msg)
         self.root.update_idletasks()
 
+    def _stop_scan(self):
+        self.stop_event.set()
+        self._update_status("Đang gửi yêu cầu dừng quét...")
+        self.btn_stop.config(state="disabled")
+
     def _start_scan(self):
         date_val = self.date_var.get().strip()
         if "/" in date_val:
@@ -480,12 +500,32 @@ class PostStatusScannerApp:
                 date_val = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
                 self.date_var.set(date_val)
 
+        # Đọc cấu hình số trang tối đa
+        p_opt = self.pages_var.get()
+        if "10" in p_opt:
+            max_pages = 10
+        elif "20" in p_opt:
+            max_pages = 20
+        elif "30" in p_opt:
+            max_pages = 30
+        elif "50" in p_opt:
+            max_pages = 50
+        else:
+            max_pages = 500  # Quét toàn bộ đến khi hết ngày
+
+        self.stop_event.clear()
         self.btn_scan.config(state="disabled")
+        self.btn_stop.config(state="normal")
         self._update_status("Đang khởi động Chrome...")
 
         def _worker():
             try:
-                results = self.scanner.scan_plan_by_date(date_val, progress_callback=self._update_status)
+                results = self.scanner.scan_plan_by_date(
+                    date_val,
+                    max_pages=max_pages,
+                    progress_callback=self._update_status,
+                    stop_event=self.stop_event
+                )
                 self.scanned_data = results
                 self.root.after(0, self._render_results)
                 
@@ -502,6 +542,7 @@ class PostStatusScannerApp:
                 self.root.after(0, lambda: self._update_status(f"Lỗi: {err_msg[:60]}"))
             finally:
                 self.root.after(0, lambda: self.btn_scan.config(state="normal"))
+                self.root.after(0, lambda: self.btn_stop.config(state="disabled"))
 
         threading.Thread(target=_worker, daemon=True).start()
 
