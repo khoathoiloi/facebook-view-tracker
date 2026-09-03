@@ -414,10 +414,10 @@ orig_build_ui = page_fb.PageFBApp._build_ui
 def custom_build_ui(self):
     orig_build_ui(self)
 
-    # 1. Xóa bỏ 3 chức năng Đồng bộ Sheet theo yêu cầu của người dùng
-    buttons_to_remove = ["Đồng bộ → Sheet", "Mở cập nhật Trang tính2", "Đồng bộ từ Sheet"]
+    # 1. Xóa bỏ các nút Sheet và 'Kiểm tra view Page'
+    buttons_to_remove = ["Đồng bộ → Sheet", "Mở cập nhật Trang tính2", "Đồng bộ từ Sheet", "Kiểm tra view Page"]
     toolbar = None
-    ref_btn = None
+    copy_btn = None
 
     for child in self.winfo_children():
         for sub in child.winfo_children():
@@ -427,13 +427,13 @@ def custom_build_ui(self):
                     if t in buttons_to_remove:
                         toolbar = sub
                         b.destroy()
-                    elif t == "Kiểm tra view Page":
-                        ref_btn = b
+                    elif t == "Copy tên Page":
+                        copy_btn = b
                         toolbar = sub
                 except Exception:
                     pass
 
-    # 2. Nối chức năng 'Kiểm tra lỗi đăng bài' vào toolbar
+    # 2. Nối chức năng 'Kiểm tra lỗi đăng bài' vào toolbar ngay cạnh 'Copy tên Page'
     if toolbar:
         self.btn_post_error_scan = ttk.Button(
             toolbar,
@@ -441,9 +441,8 @@ def custom_build_ui(self):
             style="Action.TButton",
             command=self._open_post_error_scanner
         )
-        if ref_btn:
-            # Pack trước Kiểm tra view Page hoặc sau
-            self.btn_post_error_scan.pack(side="left", padx=(0, 6), before=ref_btn)
+        if copy_btn:
+            self.btn_post_error_scan.pack(side="left", padx=(0, 6), after=copy_btn)
         else:
             self.btn_post_error_scan.pack(side="left", padx=(0, 6))
 
