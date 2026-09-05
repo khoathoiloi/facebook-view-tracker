@@ -31,9 +31,9 @@ class EmbeddedPostStatusScannerDialog(tk.Toplevel):
     def __init__(self, parent_app):
         super().__init__(parent_app)
         self.main_app = parent_app
-        self.title("Page FB — Kiểm Tra Lỗi Đăng Bài BlogB")
-        self.geometry("1200x720")
-        self.minsize(1000, 580)
+        self.title("Page FB — Quét Tình Trạng & Lỗi Đăng Bài BlogB")
+        self.geometry("1120x700")
+        self.minsize(920, 560)
 
         # Trỏ đến state.json hiện tại của tài khoản đang chọn
         current_acc = self.main_app.account_registry.current() if hasattr(self.main_app, "account_registry") else None
@@ -50,333 +50,124 @@ class EmbeddedPostStatusScannerDialog(tk.Toplevel):
     def _configure_styles(self):
         style = ttk.Style()
         style.theme_use("clam")
-
-        # ── Sidebar / panel nền
-        BG_MAIN   = "#f0f2f5"
-        BG_SIDEBAR= "#1e2433"
-        BG_CARD   = "#ffffff"
-
-        # ── Buttons
-        style.configure("Scan.TButton",
-            font=("Segoe UI", 10, "bold"),
-            background="#3b82f6", foreground="#ffffff",
-            padding=(14, 8), relief="flat", borderwidth=0)
-        style.map("Scan.TButton",
-            background=[("active","#2563eb"), ("disabled","#94a3b8")],
-            foreground=[("disabled","#e2e8f0")])
-
-        style.configure("Stop.TButton",
-            font=("Segoe UI", 10),
-            background="#ef4444", foreground="#ffffff",
-            padding=(10, 8), relief="flat", borderwidth=0)
-        style.map("Stop.TButton",
-            background=[("active","#dc2626"), ("disabled","#fca5a5")],
-            foreground=[("disabled","#ffffff")])
-
-        style.configure("Action.TButton",
-            font=("Segoe UI", 9),
-            background="#334155", foreground="#f1f5f9",
-            padding=(10, 7), relief="flat", borderwidth=0)
-        style.map("Action.TButton",
-            background=[("active","#475569")])
-
-        style.configure("Danger.TButton",
-            font=("Segoe UI", 9, "bold"),
-            background="#dc2626", foreground="#ffffff",
-            padding=(10, 7), relief="flat", borderwidth=0)
-        style.map("Danger.TButton",
-            background=[("active","#b91c1c")])
-
-        style.configure("Bell.TButton",
-            font=("Segoe UI", 9),
-            background="#7c3aed", foreground="#ffffff",
-            padding=(10, 7), relief="flat", borderwidth=0)
-        style.map("Bell.TButton",
-            background=[("active","#6d28d9")])
-
-        # ── Table
-        style.configure("Treeview.Heading",
-            font=("Segoe UI", 9, "bold"),
-            background="#1e2433", foreground="#e2e8f0",
-            padding=8, relief="flat")
-        style.configure("Treeview",
-            font=("Segoe UI", 9),
-            rowheight=30,
-            background="#ffffff",
-            fieldbackground="#ffffff",
-            foreground="#1e293b",
-            borderwidth=0)
-        style.map("Treeview",
-            background=[("selected","#dbeafe")],
-            foreground=[("selected","#1e40af")])
-
-        # ── Radiobutton filter
-        style.configure("Filter.TRadiobutton",
-            font=("Segoe UI", 9),
-            background=BG_SIDEBAR,
-            foreground="#e2e8f0")
-        style.map("Filter.TRadiobutton",
-            background=[("active", BG_SIDEBAR)],
-            foreground=[("active", "#93c5fd")])
-
-        # ── Combobox
-        style.configure("TCombobox",
-            font=("Segoe UI", 9),
-            fieldbackground="#ffffff",
-            background="#ffffff")
-
-        # store for usage in build
-        self._BG_MAIN = BG_MAIN
-        self._BG_SIDEBAR = BG_SIDEBAR
-        self._BG_CARD = BG_CARD
+        style.configure("Header.TLabel", font=("Segoe UI", 15, "bold"), foreground="#0f172a")
+        style.configure("SubHeader.TLabel", font=("Segoe UI", 9), foreground="#64748b")
+        style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"), background="#2563eb", foreground="#ffffff")
+        style.map("Primary.TButton", background=[("active", "#1d4ed8")])
+        style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"), background="#f1f5f9", foreground="#1e293b")
+        style.configure("Treeview", font=("Segoe UI", 9), rowheight=28)
+        style.map("Treeview", background=[("selected", "#e0e7ff")], foreground=[("selected", "#1e1b4b")])
 
     def _build_ui(self):
         import threading
         from datetime import datetime, timedelta
 
-        BG         = self._BG_MAIN
-        SIDEBAR    = self._BG_SIDEBAR
-        CARD       = self._BG_CARD
-        TEXT_MAIN  = "#1e293b"
-        TEXT_MUTED = "#64748b"
-        ACCENT     = "#3b82f6"
+        header_frame = tk.Frame(self, bg="#ffffff", padx=20, pady=12, bd=1, relief="solid")
+        header_frame.pack(fill="x")
 
-        self.configure(bg=BG)
+        title_lbl = ttk.Label(header_frame, text="🔍 BẢNG SOÁT LỖI & TÌNH TRẠNG ĐĂNG BÀI (BLOGB)", style="Header.TLabel", background="#ffffff")
+        title_lbl.pack(anchor="w")
+        desc_lbl = ttk.Label(header_frame, text="Tự động bóc tách trạng thái, thời gian và chi tiết lỗi kèm tên Fanpage đầy đủ 100% của ngày đã chọn.", style="SubHeader.TLabel", background="#ffffff")
+        desc_lbl.pack(anchor="w", pady=(2, 0))
 
-        # ════════════════════════════════════════════════════
-        # ROOT layout: sidebar (trái) + main (phải)
-        # ════════════════════════════════════════════════════
-        root_frame = tk.Frame(self, bg=BG)
-        root_frame.pack(fill="both", expand=True)
+        ctrl_frame = tk.Frame(self, bg="#f8fafc", padx=20, pady=12)
+        ctrl_frame.pack(fill="x")
 
-        # ────────────── SIDEBAR ──────────────
-        sidebar = tk.Frame(root_frame, bg=SIDEBAR, width=220)
-        sidebar.pack(side="left", fill="y")
-        sidebar.pack_propagate(False)
-
-        # Logo / title
-        tk.Label(sidebar, text="📋", font=("Segoe UI", 28),
-                 bg=SIDEBAR, fg=ACCENT).pack(pady=(28, 4))
-        tk.Label(sidebar, text="Soát Lỗi\nĐăng Bài", font=("Segoe UI", 13, "bold"),
-                 bg=SIDEBAR, fg="#f1f5f9", justify="center").pack()
-        tk.Label(sidebar, text="BlogB Auto-Scanner", font=("Segoe UI", 8),
-                 bg=SIDEBAR, fg="#64748b").pack(pady=(2, 24))
-
-        # Separator
-        tk.Frame(sidebar, bg="#2d3748", height=1).pack(fill="x", padx=16, pady=(0, 20))
-
-        # ── Ngày quét
-        tk.Label(sidebar, text="NGÀY QUÉT", font=("Segoe UI", 8, "bold"),
-                 bg=SIDEBAR, fg="#64748b").pack(anchor="w", padx=20, pady=(0, 4))
-
-        date_frame = tk.Frame(sidebar, bg=SIDEBAR)
-        date_frame.pack(fill="x", padx=16, pady=(0, 8))
+        tk.Label(ctrl_frame, text="Ngày quét (YYYY-MM-DD):", font=("Segoe UI", 9, "bold"), bg="#f8fafc", fg="#334155").pack(side="left", padx=(0, 6))
+        
         self.date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
-        date_entry = tk.Entry(date_frame, textvariable=self.date_var,
-                              font=("Segoe UI", 11), width=14,
-                              bg="#2d3748", fg="#f1f5f9",
-                              insertbackground="#f1f5f9",
-                              relief="flat", bd=6)
-        date_entry.pack(fill="x")
+        self.date_entry = ttk.Entry(ctrl_frame, textvariable=self.date_var, width=13, font=("Segoe UI", 10))
+        self.date_entry.pack(side="left", padx=(0, 8))
 
-        quick_frame = tk.Frame(sidebar, bg=SIDEBAR)
-        quick_frame.pack(fill="x", padx=16, pady=(0, 18))
+        btn_today = ttk.Button(ctrl_frame, text="Hôm nay", command=lambda: self.date_var.set(datetime.now().strftime("%Y-%m-%d")))
+        btn_today.pack(side="left", padx=2)
+        
+        btn_yesterday = ttk.Button(ctrl_frame, text="Hôm qua", command=lambda: self.date_var.set((datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")))
+        btn_yesterday.pack(side="left", padx=2)
 
-        def _make_quick_btn(parent, label, cmd):
-            b = tk.Button(parent, text=label,
-                          font=("Segoe UI", 8), command=cmd,
-                          bg="#2d3748", fg="#94a3b8",
-                          activebackground="#374151", activeforeground="#e2e8f0",
-                          relief="flat", bd=0, padx=8, pady=4, cursor="hand2")
-            return b
+        tk.Label(ctrl_frame, text="Số trang:", font=("Segoe UI", 9), bg="#f8fafc", fg="#334155").pack(side="left", padx=(12, 4))
+        self.pages_var = tk.StringVar(value="Tất cả (hết ngày)")
+        self.pages_combo = ttk.Combobox(ctrl_frame, textvariable=self.pages_var, values=["Tất cả (hết ngày)", "10 trang", "20 trang", "30 trang", "50 trang"], width=15, state="readonly")
+        self.pages_combo.pack(side="left", padx=(0, 10))
 
-        btn_today = _make_quick_btn(quick_frame, "Hôm nay",
-            lambda: self.date_var.set(datetime.now().strftime("%Y-%m-%d")))
-        btn_today.pack(side="left", expand=True, fill="x", padx=(0, 4))
+        self.btn_scan = ttk.Button(ctrl_frame, text="🚀 Bắt đầu quét BlogB", style="Primary.TButton", command=self._start_scan)
+        self.btn_scan.pack(side="left", padx=(6, 4))
 
-        btn_yest = _make_quick_btn(quick_frame, "Hôm qua",
-            lambda: self.date_var.set((datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")))
-        btn_yest.pack(side="left", expand=True, fill="x")
+        self.btn_stop = ttk.Button(ctrl_frame, text="⏹ Dừng", command=self._stop_scan, state="disabled")
+        self.btn_stop.pack(side="left", padx=(0, 6))
 
-        # ── Số trang
-        tk.Label(sidebar, text="SỐ TRANG TỐI ĐA", font=("Segoe UI", 8, "bold"),
-                 bg=SIDEBAR, fg="#64748b").pack(anchor="w", padx=20, pady=(0, 4))
+        self.btn_bell = ttk.Button(ctrl_frame, text="🔔 Quét chuông thông báo", command=self._start_bell_scan)
+        self.btn_bell.pack(side="left", padx=6)
 
-        self.pages_var = tk.StringVar(value="Tất cả")
-        pages_combo = ttk.Combobox(sidebar, textvariable=self.pages_var,
-                                   values=["Tất cả", "10 trang", "20 trang", "30 trang", "50 trang"],
-                                   state="readonly", font=("Segoe UI", 9), width=18)
-        pages_combo.pack(padx=16, fill="x", pady=(0, 24))
-
-        tk.Frame(sidebar, bg="#2d3748", height=1).pack(fill="x", padx=16, pady=(0, 20))
-
-        # ── Nút chính: Quét
-        self.btn_scan = tk.Button(sidebar, text="▶  Bắt đầu quét",
-            font=("Segoe UI", 11, "bold"),
-            bg=ACCENT, fg="#ffffff",
-            activebackground="#2563eb", activeforeground="#ffffff",
-            relief="flat", bd=0, padx=0, pady=12,
-            cursor="hand2", command=self._start_scan)
-        self.btn_scan.pack(fill="x", padx=16, pady=(0, 6))
-
-        self.btn_stop = tk.Button(sidebar, text="■  Dừng quét",
-            font=("Segoe UI", 10),
-            bg="#7f1d1d", fg="#fca5a5",
-            activebackground="#991b1b", activeforeground="#ffffff",
-            relief="flat", bd=0, padx=0, pady=10,
-            cursor="hand2", state="disabled", command=self._stop_scan)
-        self.btn_stop.pack(fill="x", padx=16, pady=(0, 18))
-
-        self.btn_bell = tk.Button(sidebar, text="🔔  Quét chuông",
-            font=("Segoe UI", 9),
-            bg="#312e81", fg="#c7d2fe",
-            activebackground="#3730a3", activeforeground="#ffffff",
-            relief="flat", bd=0, padx=0, pady=9,
-            cursor="hand2", command=self._start_bell_scan)
-        self.btn_bell.pack(fill="x", padx=16, pady=(0, 20))
-
-        tk.Frame(sidebar, bg="#2d3748", height=1).pack(fill="x", padx=16, pady=(0, 20))
-
-        # ── Bộ lọc hiển thị
-        tk.Label(sidebar, text="BỘ LỌC", font=("Segoe UI", 8, "bold"),
-                 bg=SIDEBAR, fg="#64748b").pack(anchor="w", padx=20, pady=(0, 8))
-
+        tk.Label(ctrl_frame, text="Hiển thị:", font=("Segoe UI", 9, "bold"), bg="#f8fafc", fg="#334155").pack(side="left", padx=(20, 6))
         self.filter_var = tk.StringVar(value="ALL")
-        filter_defs = [
-            ("Tất cả bài", "ALL", "#e2e8f0"),
-            ("Thất bại / Lỗi", "FAILED", "#fca5a5"),
-            ("Đã đăng thành công", "SUCCESS", "#86efac"),
-        ]
-        for label, mode, color in filter_defs:
-            row = tk.Frame(sidebar, bg=SIDEBAR, cursor="hand2")
-            row.pack(fill="x", padx=16, pady=1)
-            dot = tk.Label(row, text="●", font=("Segoe UI", 8),
-                           bg=SIDEBAR, fg=color)
-            dot.pack(side="left", padx=(0, 6))
-            rb = tk.Radiobutton(row, text=label,
-                                variable=self.filter_var, value=mode,
-                                command=self._apply_filter,
-                                font=("Segoe UI", 9),
-                                bg=SIDEBAR, fg="#cbd5e1",
-                                activebackground=SIDEBAR, activeforeground="#ffffff",
-                                selectcolor="#0f172a", bd=0)
-            rb.pack(side="left", fill="x")
+        for text, mode in [("Tất cả", "ALL"), ("🔴 Thất bại (Lỗi)", "FAILED"), ("🟢 Đã đăng", "SUCCESS")]:
+            rb = ttk.Radiobutton(ctrl_frame, text=text, variable=self.filter_var, value=mode, command=self._apply_filter)
+            rb.pack(side="left", padx=3)
 
-        # ── Nút hành động (dưới cùng sidebar)
-        tk.Frame(sidebar, bg=SIDEBAR).pack(expand=True, fill="y")   # spacer
-        tk.Frame(sidebar, bg="#2d3748", height=1).pack(fill="x", padx=16, pady=(0, 14))
+        # Summary Metrics
+        summary_frame = tk.Frame(self, bg="#ffffff", padx=20, pady=8, bd=1, relief="groove")
+        summary_frame.pack(fill="x", padx=15, pady=(8, 4))
 
-        self.btn_copy_err = tk.Button(sidebar, text="📋  Copy Page lỗi",
-            font=("Segoe UI", 9),
-            bg="#1e3a5f", fg="#93c5fd",
-            activebackground="#1e40af", activeforeground="#ffffff",
-            relief="flat", bd=0, pady=9, cursor="hand2",
-            command=self._copy_failed_pages)
-        self.btn_copy_err.pack(fill="x", padx=16, pady=(0, 5))
+        self.lbl_total = tk.Label(summary_frame, text="📊 Tổng bài: 0", font=("Segoe UI", 10, "bold"), bg="#ffffff", fg="#1e293b")
+        self.lbl_total.pack(side="left", padx=15)
 
-        self.btn_mark_red = tk.Button(sidebar, text="🔴  Chuyển sang Page Đỏ",
-            font=("Segoe UI", 9, "bold"),
-            bg="#7f1d1d", fg="#fca5a5",
-            activebackground="#991b1b", activeforeground="#ffffff",
-            relief="flat", bd=0, pady=9, cursor="hand2",
-            command=self._mark_pages_as_red_and_update_main_ui)
-        self.btn_mark_red.pack(fill="x", padx=16, pady=(0, 5))
+        self.lbl_success = tk.Label(summary_frame, text="🟢 Thành công: 0", font=("Segoe UI", 10, "bold"), bg="#ffffff", fg="#16a34a")
+        self.lbl_success.pack(side="left", padx=15)
 
-        self.btn_export = tk.Button(sidebar, text="📥  Xuất báo cáo TXT",
-            font=("Segoe UI", 9),
-            bg="#1c3a2e", fg="#86efac",
-            activebackground="#166534", activeforeground="#ffffff",
-            relief="flat", bd=0, pady=9, cursor="hand2",
-            command=self._export_report)
-        self.btn_export.pack(fill="x", padx=16, pady=(0, 20))
+        self.lbl_failed = tk.Label(summary_frame, text="🔴 Thất bại: 0", font=("Segoe UI", 10, "bold"), bg="#ffffff", fg="#dc2626")
+        self.lbl_failed.pack(side="left", padx=15)
 
-        # ════════════════════════════════════════════════════
-        # MAIN PANEL
-        # ════════════════════════════════════════════════════
-        main_panel = tk.Frame(root_frame, bg=BG)
-        main_panel.pack(side="left", fill="both", expand=True)
+        self.lbl_status_msg = tk.Label(summary_frame, text="Sẵn sàng", font=("Segoe UI", 9, "italic"), bg="#ffffff", fg="#64748b")
+        self.lbl_status_msg.pack(side="right", padx=15)
 
-        # ── Topbar với stats cards
-        topbar = tk.Frame(main_panel, bg=BG, pady=12)
-        topbar.pack(fill="x", padx=16)
-
-        def _stat_card(parent, label, value_text, value_color, icon):
-            card = tk.Frame(parent, bg=CARD, padx=18, pady=12,
-                            relief="flat", bd=0,
-                            highlightbackground="#e2e8f0",
-                            highlightthickness=1)
-            card.pack(side="left", padx=(0, 10), fill="y")
-            top_row = tk.Frame(card, bg=CARD)
-            top_row.pack(anchor="w")
-            tk.Label(top_row, text=icon, font=("Segoe UI", 13),
-                     bg=CARD, fg=value_color).pack(side="left", padx=(0, 6))
-            val_lbl = tk.Label(top_row, text=value_text,
-                               font=("Segoe UI", 18, "bold"),
-                               bg=CARD, fg=value_color)
-            val_lbl.pack(side="left")
-            tk.Label(card, text=label,
-                     font=("Segoe UI", 8),
-                     bg=CARD, fg=TEXT_MUTED).pack(anchor="w")
-            return val_lbl
-
-        self._val_total   = _stat_card(topbar, "TỔNG BÀI ĐĂNG",  "0", TEXT_MAIN,  "📄")
-        self._val_success = _stat_card(topbar, "ĐÃ ĐĂNG",         "0", "#16a34a",  "✅")
-        self._val_failed  = _stat_card(topbar, "THẤT BẠI",        "0", "#dc2626",  "❌")
-
-        # Status bar nằm bên phải topbar
-        self.lbl_status_msg = tk.Label(topbar,
-            text="Sẵn sàng — chọn ngày và bấm Bắt đầu quét.",
-            font=("Segoe UI", 9, "italic"),
-            bg=BG, fg=TEXT_MUTED,
-            wraplength=340, justify="right")
-        self.lbl_status_msg.pack(side="right", padx=(10, 0), anchor="e")
-
-        # Thêm alias để code cũ vẫn hoạt động
-        self.lbl_total   = self._val_total
-        self.lbl_success = self._val_success
-        self.lbl_failed  = self._val_failed
-
-        # ── Bảng dữ liệu
-        table_outer = tk.Frame(main_panel, bg=BG, padx=16, pady=(0, 10))
-        table_outer.pack(fill="both", expand=True)
-
-        # Card bao bên ngoài bảng
-        table_card = tk.Frame(table_outer, bg=CARD,
-                              highlightbackground="#e2e8f0",
-                              highlightthickness=1)
-        table_card.pack(fill="both", expand=True)
+        # Treeview
+        table_frame = tk.Frame(self, padx=15, pady=6)
+        table_frame.pack(fill="both", expand=True)
 
         columns = ("stt", "page_name", "status", "error_detail", "post_time", "post_title")
-        self.tree = ttk.Treeview(table_card, columns=columns,
-                                 show="headings", selectmode="extended")
+        self.tree = ttk.Treeview(table_frame, columns=columns, show="headings", selectmode="extended")
+        
+        self.tree.heading("stt", text="STT")
+        self.tree.heading("page_name", text="Tên Fanpage (Chuẩn 100%)")
+        self.tree.heading("status", text="Trạng thái")
+        self.tree.heading("error_detail", text="Chi tiết lỗi chính xác")
+        self.tree.heading("post_time", text="Giờ đăng")
+        self.tree.heading("post_title", text="Tiêu đề bài viết")
 
-        self.tree.heading("stt",          text="#",      anchor="center")
-        self.tree.heading("page_name",    text="Tên Fanpage",    anchor="w")
-        self.tree.heading("status",       text="Trạng thái",     anchor="center")
-        self.tree.heading("error_detail", text="Chi tiết lỗi",   anchor="w")
-        self.tree.heading("post_time",    text="Giờ đăng",       anchor="center")
-        self.tree.heading("post_title",   text="Tiêu đề bài",    anchor="w")
+        self.tree.column("stt", width=50, anchor="center")
+        self.tree.column("page_name", width=220, anchor="w")
+        self.tree.column("status", width=110, anchor="center")
+        self.tree.column("error_detail", width=380, anchor="w")
+        self.tree.column("post_time", width=140, anchor="center")
+        self.tree.column("post_title", width=220, anchor="w")
 
-        self.tree.column("stt",          width=44,  minwidth=36,  anchor="center",  stretch=False)
-        self.tree.column("page_name",    width=200, minwidth=140, anchor="w")
-        self.tree.column("status",       width=105, minwidth=90,  anchor="center",  stretch=False)
-        self.tree.column("error_detail", width=380, minwidth=200, anchor="w")
-        self.tree.column("post_time",    width=130, minwidth=100, anchor="center",  stretch=False)
-        self.tree.column("post_title",   width=200, minwidth=120, anchor="w")
+        self.tree.tag_configure("failed_row", background="#fef2f2", foreground="#991b1b")
+        self.tree.tag_configure("success_row", background="#f0fdf4", foreground="#166534")
 
-        self.tree.tag_configure("failed_row",  background="#fff1f2", foreground="#9f1239")
-        self.tree.tag_configure("success_row", background="#f0fdf4", foreground="#14532d")
-        self.tree.tag_configure("alt_row",     background="#f8fafc")
-
-        vsb = ttk.Scrollbar(table_card, orient="vertical",   command=self.tree.yview)
-        hsb = ttk.Scrollbar(table_card, orient="horizontal",  command=self.tree.xview)
+        vsb = ttk.Scrollbar(table_frame, orient="vertical", command=self.tree.yview)
+        hsb = ttk.Scrollbar(table_frame, orient="horizontal", command=self.tree.xview)
         self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
 
         self.tree.grid(row=0, column=0, sticky="nsew")
         vsb.grid(row=0, column=1, sticky="ns")
         hsb.grid(row=1, column=0, sticky="ew")
-        table_card.grid_rowconfigure(0, weight=1)
-        table_card.grid_columnconfigure(0, weight=1)
+
+        table_frame.grid_rowconfigure(0, weight=1)
+        table_frame.grid_columnconfigure(0, weight=1)
+
+        # Bottom Bar
+        bottom_frame = tk.Frame(self, bg="#f8fafc", padx=20, pady=12)
+        bottom_frame.pack(fill="x")
+
+        btn_copy_err = ttk.Button(bottom_frame, text="📋 Copy danh sách Page lỗi", command=self._copy_failed_pages)
+        btn_copy_err.pack(side="left", padx=5)
+
+        btn_mark_red = ttk.Button(bottom_frame, text="🔴 Chuyển các Page lỗi sang Page Đỏ", command=self._mark_pages_as_red_and_update_main_ui)
+        btn_mark_red.pack(side="left", padx=5)
+
+        btn_export = ttk.Button(bottom_frame, text="📥 Xuất báo cáo TXT", command=self._export_report)
+        btn_export.pack(side="right", padx=5)
 
     def _update_status(self, msg: str):
         self.lbl_status_msg.config(text=msg)
@@ -489,27 +280,17 @@ class EmbeddedPostStatusScannerDialog(tk.Toplevel):
         success = sum(1 for r in self.scanned_data if r["status"] == "ĐÃ ĐĂNG")
         failed = sum(1 for r in self.scanned_data if r["status"] == "THẤT BÀI")
 
-        # Cập nhật stat cards
-        self._val_total.config(text=str(total))
-        self._val_success.config(text=str(success))
-        self._val_failed.config(text=str(failed))
+        self.lbl_total.config(text=f"📊 Tổng bài: {total}")
+        self.lbl_success.config(text=f"🟢 Thành công: {success}")
+        self.lbl_failed.config(text=f"🔴 Thất bại: {failed}")
 
-        row_idx = 0
         for r in self.scanned_data:
             if filter_mode == "FAILED" and r["status"] != "THẤT BÀI":
                 continue
             if filter_mode == "SUCCESS" and r["status"] != "ĐÃ ĐĂNG":
                 continue
 
-            if r["status"] == "THẤT BÀI":
-                tag = "failed_row"
-            elif r["status"] == "ĐÃ ĐĂNG":
-                tag = "success_row"
-            elif row_idx % 2 == 1:
-                tag = "alt_row"
-            else:
-                tag = ""
-
+            tag = "failed_row" if r["status"] == "THẤT BÀI" else ("success_row" if r["status"] == "ĐÃ ĐĂNG" else "")
             err_show = r["error_detail"] if r["error_detail"] else ("Thành công" if r["status"] == "ĐÃ ĐĂNG" else "—")
             self.tree.insert("", "end", values=(
                 r["stt"],
@@ -519,7 +300,6 @@ class EmbeddedPostStatusScannerDialog(tk.Toplevel):
                 r["post_time"],
                 r["post_title"]
             ), tags=(tag,))
-            row_idx += 1
 
     def _apply_filter(self):
         self._render_results()
@@ -629,82 +409,9 @@ class EmbeddedPostStatusScannerDialog(tk.Toplevel):
 
 
 # ================= GẮN VÀO GIAO DIỆN CHÍNH PAGE FB =================
-def modern_configure_style(self):
-    style = ttk.Style(self)
-    style.theme_use('clam')
-
-    # Color Palette: Clean Modern SaaS Light
-    BG_APP = '#f1f5f9'        # slate-100
-    BG_CARD = '#ffffff'       # white
-    BORDER_COLOR = '#cbd5e1'  # slate-300
-    TEXT_MAIN = '#0f172a'     # slate-900
-    TEXT_MUTED = '#64748b'    # slate-500
-    ACCENT_BLUE = '#2563eb'   # blue-600
-    ACCENT_PURPLE = '#7c3aed' # purple-600
-
-    style.configure('.', font=('Segoe UI', 9), background=BG_APP, foreground=TEXT_MAIN)
-    style.configure('App.TFrame', background=BG_APP)
-    style.configure('TFrame', background=BG_APP)
-
-    # Labels
-    style.configure('Title.TLabel', font=('Segoe UI', 15, 'bold'), foreground=TEXT_MAIN, background=BG_APP)
-    style.configure('Subtitle.TLabel', font=('Segoe UI', 8), foreground=TEXT_MUTED, background=BG_APP)
-    style.configure('Bold.TLabel', font=('Segoe UI', 9, 'bold'), foreground='#334155', background=BG_APP)
-    style.configure('Summary.TLabel', font=('Segoe UI', 9, 'bold'), foreground='#1e293b', background=BG_APP)
-
-    # Primary Button (Quét Page)
-    style.configure('Primary.TButton', font=('Segoe UI', 9, 'bold'), background=ACCENT_BLUE, foreground='#ffffff', padding=(14, 7), relief='flat', borderwidth=0)
-    style.map('Primary.TButton', background=[('active', '#1d4ed8'), ('disabled', '#94a3b8')], foreground=[('disabled', '#e2e8f0')])
-
-    # Chrome Button (Mở Chrome)
-    style.configure('Chrome.TButton', font=('Segoe UI', 9, 'bold'), background='#334155', foreground='#ffffff', padding=(12, 7), relief='flat', borderwidth=0)
-    style.map('Chrome.TButton', background=[('active', '#1e293b'), ('disabled', '#94a3b8')])
-
-    # Scanner Button (Kiểm tra lỗi đăng bài - Nổi bật)
-    style.configure('Scanner.TButton', font=('Segoe UI', 9, 'bold'), background=ACCENT_PURPLE, foreground='#ffffff', padding=(14, 7), relief='flat', borderwidth=0)
-    style.map('Scanner.TButton', background=[('active', '#6d28d9'), ('disabled', '#c4b5fd')])
-
-    # Standard Action Button
-    style.configure('Action.TButton', font=('Segoe UI', 9), background='#ffffff', foreground='#1e293b', padding=(10, 6), relief='solid', borderwidth=1)
-    style.map('Action.TButton', background=[('active', '#f8fafc'), ('disabled', '#e2e8f0')])
-
-    # Table Actions
-    style.configure('GreenBtn.TButton', font=('Segoe UI', 8, 'bold'), background='#16a34a', foreground='#ffffff', padding=(8, 4), relief='flat', borderwidth=0)
-    style.map('GreenBtn.TButton', background=[('active', '#15803d')])
-
-    style.configure('RedBtn.TButton', font=('Segoe UI', 8, 'bold'), background='#dc2626', foreground='#ffffff', padding=(8, 4), relief='flat', borderwidth=0)
-    style.map('RedBtn.TButton', background=[('active', '#b91c1c')])
-
-    style.configure('RestoreBtn.TButton', font=('Segoe UI', 8, 'bold'), background='#0284c7', foreground='#ffffff', padding=(8, 4), relief='flat', borderwidth=0)
-    style.map('RestoreBtn.TButton', background=[('active', '#0369a1')])
-
-    style.configure('DangerGhost.TButton', font=('Segoe UI', 8), background='#fee2e2', foreground='#991b1b', padding=(8, 4), relief='flat', borderwidth=0)
-    style.map('DangerGhost.TButton', background=[('active', '#fca5a5')])
-
-    # Notebook Tabs
-    style.configure('TNotebook', background=BG_APP, borderwidth=0, tabmargins=[2, 4, 2, 0])
-    style.configure('TNotebook.Tab', font=('Segoe UI', 9, 'bold'), padding=(16, 7), background='#e2e8f0', foreground='#64748b', borderwidth=0)
-    style.map('TNotebook.Tab', background=[('selected', '#ffffff')], foreground=[('selected', ACCENT_BLUE)])
-
-    # Labelframe (Columns for Active / Green / Red)
-    style.configure('TLabelframe', background=BG_CARD, borderwidth=1, relief='solid', bordercolor=BORDER_COLOR)
-    style.configure('TLabelframe.Label', font=('Segoe UI', 9, 'bold'), foreground=TEXT_MAIN, background=BG_CARD)
-
-    # Treeview
-    style.configure('Treeview', font=('Segoe UI', 9), rowheight=28, background=BG_CARD, fieldbackground=BG_CARD, foreground='#1e293b', borderwidth=0)
-    style.configure('Treeview.Heading', font=('Segoe UI', 8, 'bold'), background='#f8fafc', foreground='#475569', relief='flat', padding=6)
-    style.map('Treeview', background=[('selected', '#dbeafe')], foreground=[('selected', '#1e40af')])
-
-    # Combobox & Entry
-    style.configure('TCombobox', font=('Segoe UI', 9), fieldbackground='#ffffff')
-    style.configure('TEntry', font=('Segoe UI', 9), fieldbackground='#ffffff')
-
-page_fb.PageFBApp._configure_style = modern_configure_style
-
 orig_build_ui = page_fb.PageFBApp._build_ui
 
 def custom_build_ui(self):
-    self.configure(bg="#f1f5f9")
     orig_build_ui(self)
 
     # 1. Xóa bỏ các nút Sheet và 'Kiểm tra view Page'
@@ -730,63 +437,14 @@ def custom_build_ui(self):
     if toolbar:
         self.btn_post_error_scan = ttk.Button(
             toolbar,
-            text="🔍 Kiểm tra lỗi đăng bài",
-            style="Scanner.TButton",
+            text="Kiểm tra lỗi đăng bài",
+            style="Action.TButton",
             command=self._open_post_error_scanner
         )
         if copy_btn:
             self.btn_post_error_scan.pack(side="left", padx=(0, 6), after=copy_btn)
         else:
             self.btn_post_error_scan.pack(side="left", padx=(0, 6))
-
-    # 3. Làm đẹp và gắn icon cho toàn bộ các nút & nhãn trên giao diện chính
-    def _beautify(widget):
-        for w in widget.winfo_children():
-            if isinstance(w, ttk.Button):
-                try:
-                    t = w.cget("text")
-                    if "Mở Chrome" in t and "🌐" not in t:
-                        w.configure(text="🌐 Mở Chrome / Đăng nhập", style="Chrome.TButton")
-                    elif "Quét toàn bộ" in t and "⚡" not in t:
-                        w.configure(text="⚡ Quét toàn bộ Page", style="Primary.TButton")
-                    elif "Xuất tên" in t and "📥" not in t:
-                        w.configure(text="📥 Xuất tên Page", style="Action.TButton")
-                    elif "Copy tên Page" in t and "📋" not in t:
-                        w.configure(text="📋 Copy tên Page", style="Action.TButton")
-                    elif "Thêm tài khoản" in t and "+" not in t:
-                        w.configure(text="+ Thêm tài khoản", style="Action.TButton")
-                    elif "Xóa lọc" in t and "✕" not in t:
-                        w.configure(text="✕ Xóa lọc", style="Action.TButton")
-                    elif "Thêm Page xanh" in t and "🟢" not in t:
-                        w.configure(text="🟢 Thêm Page xanh", style="GreenBtn.TButton")
-                    elif "Đưa sang Page đỏ" in t and "🔴" not in t:
-                        w.configure(text="🔴 Đưa sang Page đỏ", style="RedBtn.TButton")
-                    elif "Bỏ Page xanh" in t and "⚪" not in t:
-                        w.configure(text="⚪ Bỏ Page xanh", style="Action.TButton")
-                    elif "Khôi phục Page thường" in t and "🔄" not in t:
-                        w.configure(text="🔄 Khôi phục thường", style="RestoreBtn.TButton")
-                    elif "Khôi phục + Page xanh" in t and "🟢" not in t:
-                        w.configure(text="🟢 Khôi phục + Xanh", style="GreenBtn.TButton")
-                    elif "Xoá cụm" in t and "🗑️" not in t:
-                        w.configure(text="🗑️ " + t, style="DangerGhost.TButton")
-                    elif "Copy cụm" in t and "📋" not in t:
-                        w.configure(text="📋 " + t, style="Action.TButton")
-                    elif "Copy Page đang chọn" in t and "📋" not in t:
-                        w.configure(text="📋 Copy đang chọn", style="Action.TButton")
-                except Exception:
-                    pass
-            elif isinstance(w, ttk.Label):
-                try:
-                    t = w.cget("text")
-                    if "Quản lý Page Facebook" in t and "🚀" not in t:
-                        w.configure(text="🚀 Quản lý Fanpage Facebook", style="Title.TLabel")
-                    elif "Tổng" in t and "Hoạt động" in t:
-                        w.configure(font=("Segoe UI", 10, "bold"), foreground="#1e40af")
-                except Exception:
-                    pass
-            _beautify(w)
-
-    _beautify(self)
 
 def _open_post_error_scanner(self):
     """Mở cửa sổ Kiểm tra lỗi đăng bài BlogB."""
@@ -797,28 +455,7 @@ def _open_post_error_scanner(self):
 
     self._scanner_window = EmbeddedPostStatusScannerDialog(self)
 
-orig_refresh_all = page_fb.PageFBApp._refresh_all
-
-def custom_refresh_all(self):
-    orig_refresh_all(self)
-    # Highlight categories in treeviews
-    for gid, trees in self.group_trees.items():
-        if "green" in trees:
-            trees["green"].tag_configure("green_tag", foreground="#15803d", font=("Segoe UI", 9, "bold"))
-            for item in trees["green"].get_children():
-                trees["green"].item(item, tags=("green_tag",))
-        if "red" in trees:
-            trees["red"].tag_configure("red_tag", foreground="#dc2626", font=("Segoe UI", 9, "bold"))
-            for item in trees["red"].get_children():
-                trees["red"].item(item, tags=("red_tag",))
-        if "active" in trees:
-            trees["active"].tag_configure("alt_row", background="#f8fafc")
-            for idx, item in enumerate(trees["active"].get_children()):
-                if idx % 2 == 1:
-                    trees["active"].item(item, tags=("alt_row",))
-
 page_fb.PageFBApp._build_ui = custom_build_ui
-page_fb.PageFBApp._refresh_all = custom_refresh_all
 page_fb.PageFBApp._open_post_error_scanner = _open_post_error_scanner
 
 
@@ -829,4 +466,3 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
