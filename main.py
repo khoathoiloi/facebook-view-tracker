@@ -326,12 +326,26 @@ class EmbeddedPostStatusScannerDialog(tk.Toplevel):
 
         if not messagebox.askyesno("Xác nhận chuyển sang Page Đỏ", 
                                    f"Tìm thấy {len(unique_failed)} Fanpage bị lỗi đăng bài.\n\n"
-                                   "Bạn có chắc muốn tự động chuyển các Page này sang 'Page Đỏ' và cập nhật ngay vào giao diện chính?", 
+                                   "Bạn có chắc muốn tự động chuyển các Page này sang 'Page Đỏ' kèm note lý do lỗi chi tiết và cập nhật ngay vào giao diện chính?", 
                                    parent=self):
             return
 
+        # Lưu map lỗi chi tiết cho từng Fanpage
+        failed_errors = {}
+        for r in self.scanned_data:
+            if r.get("status") == "THẤT BÀI" and r.get("page_name"):
+                name = r["page_name"].strip()
+                err = (r.get("error_detail") or "").strip()
+                t = (r.get("post_time") or "").strip()
+                if err:
+                    note = f"[{t}] {err}" if t else err
+                else:
+                    note = f"[{t}] Lỗi đăng bài (Thất bại)" if t else "Lỗi đăng bài (Thất bại)"
+                failed_errors[name] = note
+
         # Thực hiện cập nhật vào state_data của main_app
         state = self.main_app.state_data
+        red_errors = state.setdefault("red_errors", {})
         catalog = state.get("page_catalog", {})
         groups = catalog.get("groups", {})
         count = 0
@@ -344,8 +358,11 @@ class EmbeddedPostStatusScannerDialog(tk.Toplevel):
             for row in group_data.get("pages", []):
                 name = row.get("name", "").strip()
                 key = row.get("key", "").strip()
-                if name in unique_failed and key:
+                if name in failed_errors and key:
+                    note = failed_errors[name]
                     row["default_status"] = "red"
+                    row["error_note"] = note
+                    red_errors[key] = note
                     red_keys.add(key)
                     green_keys.discard(key)
                     changed = True
@@ -359,11 +376,11 @@ class EmbeddedPostStatusScannerDialog(tk.Toplevel):
         self.main_app.repository.save(state)
         
         # Làm mới toàn bộ giao diện chính của PageFBApp
-        self.main_app.status_var.set(f"Đã chuyển {count} Page lỗi sang Page Đỏ và cập nhật giao diện.")
+        self.main_app.status_var.set(f"Đã chuyển {count} Page lỗi sang Page Đỏ kèm ghi chú lý do lỗi chi tiết.")
         self.main_app._refresh_all()
 
         messagebox.showinfo("Cập nhật thành công!", 
-                            f"Đã chuyển thành công {count} Fanpage lỗi sang cột 'Page đỏ'!\n\n"
+                            f"Đã chuyển thành công {count} Fanpage lỗi sang cột 'Page đỏ' kèm lý do lỗi chi tiết!\n\n"
                             "Giao diện chính của tool đã được cập nhật ngay lập tức.", 
                             parent=self)
 
@@ -409,9 +426,89 @@ class EmbeddedPostStatusScannerDialog(tk.Toplevel):
 
 
 # ================= GẮN VÀO GIAO DIỆN CHÍNH PAGE FB =================
+import copy
+orig_minimal_page_state = page_fb._minimal_page_state
+
+def custom_minimal_page_state(source):
+    res = orig_minimal_page_state(source)
+    if isinstance(source, dict) and "red_errors" in source:
+        res["red_errors"] = copy.deepcopy(source["red_errors"])
+    return res
+
+page_fb._minimal_page_state = custom_minimal_page_state
+
+def _show_page_error_dialog(self, event):
+    """Hiển thị và cho phép chỉnh sửa chi tiết lỗi khi nhấp đúp vào Page Đỏ."""
+    tree = event.widget
+    item = tree.identify_row(event.y)
+    if not item:
+        return
+    page_name = tree.item(item, "text")
+    vals = list(tree.item(item, "values"))
+    fb_id = vals[0] if len(vals) > 0 else "—"
+    current_note = vals[1] if len(vals) > 1 else ""
+
+    dlg = tk.Toplevel(self)
+    dlg.title(f"Chi tiết lỗi — {page_name}")
+    dlg.geometry("540x320")
+    dlg.transient(self)
+    dlg.grab_set()
+
+    f = ttk.Frame(dlg, padding=16)
+    f.pack(fill="both", expand=True)
+
+    ttk.Label(f, text=f"Tên Fanpage: {page_name}", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 4))
+    ttk.Label(f, text=f"Facebook ID: {fb_id}", font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 8))
+    ttk.Label(f, text="Lý do / Ghi chú lỗi:", font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 4))
+
+    txt = tk.Text(f, wrap="word", height=6, font=("Segoe UI", 9), padx=6, pady=6)
+    txt.pack(fill="both", expand=True, pady=(0, 10))
+    txt.insert("1.0", current_note)
+
+    btn_row = ttk.Frame(f)
+    btn_row.pack(fill="x")
+
+    def _save():
+        new_note = txt.get("1.0", "end").strip()
+        state = self.state_data
+        red_errors = state.setdefault("red_errors", {})
+        red_errors[item] = new_note
+        for g in state.get("page_catalog", {}).get("groups", {}).values():
+            for p in g.get("pages", []):
+                if p.get("key") == item:
+                    p["error_note"] = new_note
+        tree.item(item, values=(fb_id, new_note))
+        self.repository.save(state)
+        dlg.destroy()
+
+    ttk.Button(btn_row, text="💾 Lưu ghi chú", command=_save).pack(side="left", padx=(0, 6))
+    ttk.Button(btn_row, text="Đóng", command=dlg.destroy).pack(side="right")
+
+orig_move_selected = page_fb.PageFBApp._move_selected
+
+def custom_move_selected(self, group, source, target):
+    state = self.state_data
+    try:
+        tree = self.group_trees[group][source]
+        keys = list(tree.selection())
+        if target == "red":
+            red_errors = state.setdefault("red_errors", {})
+            for k in keys:
+                if k not in red_errors or not red_errors[k]:
+                    red_errors[k] = "Chuyển thủ công"
+        elif target in ("normal", "green"):
+            red_errors = state.get("red_errors", {})
+            for k in keys:
+                red_errors.pop(k, None)
+    except Exception:
+        pass
+    orig_move_selected(self, group, source, target)
+
 orig_build_ui = page_fb.PageFBApp._build_ui
 
 def custom_build_ui(self):
+    self.geometry("1280x760")
+    self.minsize(1050, 580)
     orig_build_ui(self)
 
     # 1. Xóa bỏ các nút Sheet và 'Kiểm tra view Page'
@@ -455,7 +552,48 @@ def _open_post_error_scanner(self):
 
     self._scanner_window = EmbeddedPostStatusScannerDialog(self)
 
+orig_refresh_all = page_fb.PageFBApp._refresh_all
+
+def custom_refresh_all(self, preferred_group=None):
+    if preferred_group is not None:
+        orig_refresh_all(self, preferred_group=preferred_group)
+    else:
+        orig_refresh_all(self)
+
+    state = self.state_data
+    red_errors = state.setdefault("red_errors", {})
+    # Đồng bộ note từ catalog nếu chưa có trong red_errors
+    for g in state.get("page_catalog", {}).get("groups", {}).values():
+        for p in g.get("pages", []):
+            pk = p.get("key")
+            err = p.get("error_note")
+            if pk and err and pk not in red_errors:
+                red_errors[pk] = err
+
+    # Cấu hình cột hiển thị và giá trị ghi chú lỗi cho tất cả các bảng Page Đỏ
+    for gid, trees in self.group_trees.items():
+        if "red" in trees:
+            t = trees["red"]
+            if t["columns"] != ("id", "error"):
+                t.configure(columns=("id", "error"))
+                t.heading("#0", text="Tên Page", anchor="w")
+                t.heading("id", text="Facebook ID", anchor="center")
+                t.heading("error", text="Lý do / Ghi chú lỗi", anchor="w")
+                t.column("#0", width=180, minwidth=120, stretch=False, anchor="w")
+                t.column("id", width=110, minwidth=80, stretch=False, anchor="center")
+                t.column("error", width=320, minwidth=160, stretch=True, anchor="w")
+                t.bind("<Double-1>", lambda e: self._show_page_error_dialog(e))
+
+            for item in t.get_children():
+                err_msg = red_errors.get(item, "")
+                vals = list(t.item(item, "values"))
+                fb_id = vals[0] if vals else "—"
+                t.item(item, values=(fb_id, err_msg))
+
+page_fb.PageFBApp._show_page_error_dialog = _show_page_error_dialog
+page_fb.PageFBApp._move_selected = custom_move_selected
 page_fb.PageFBApp._build_ui = custom_build_ui
+page_fb.PageFBApp._refresh_all = custom_refresh_all
 page_fb.PageFBApp._open_post_error_scanner = _open_post_error_scanner
 
 
@@ -466,3 +604,4 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
